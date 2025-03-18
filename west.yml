@@ -1,0 +1,47 @@
+# The west manifest file for FRDM-RW612 Platform Accelerator
+
+manifest:
+  remotes:
+    - name: nxp
+      url-base: https://github.com/NXP
+    - name: nxp-mcuxpresso
+      url-base: https://github.com/nxp-mcuxpresso
+    - name: freertos
+      url-base: https://github.com/FreeRTOS
+  # Please add items below in reverse alphabetical order
+  projects:
+    - name: mcux-sdk
+      remote: nxp-mcuxpresso
+      revision: MCUX_2.16.000
+      path: npa-rw612-frdm/bsp/mcux-sdk/core
+    - name: CMSIS_5
+      path: npa-rw612-frdm/bsp/mcux-sdk/core/CMSIS
+      revision: MCUX_2.16.000
+      remote: nxp-mcuxpresso
+    - name: FreeRTOS-Kernel
+      revision: MCUX_2.16.000
+      remote: nxp-mcuxpresso
+      path: npa-rw612-frdm/bsp/mcux-sdk/rtos/freertos/freertos-kernel
+    - name: fatfs
+      remote: nxp-mcuxpresso
+      path: npa-rw612-frdm/bsp/mcux-sdk/middleware/fatfs
+      revision: MCUX_2.16.000
+    - name: mcux-sdk-middleware-sdmmc
+      remote: nxp-mcuxpresso
+      revision: MCUX_2.16.000
+      path: npa-rw612-frdm/bsp/mcux-sdk/middleware/sdmmc
+    - name: lwip
+      remote: nxp-mcuxpresso
+      revision: MCUX_2.16.000
+      path: npa-rw612-frdm/bsp/mcux-sdk/middleware/lwip
+    - name: mbedtls
+      remote: nxp-mcuxpresso
+      revision: MCUX_2.16.000
+      path: npa-rw612-frdm/bsp/mcux-sdk/middleware/mbedtls
+    - name: wifi_nxp
+      path: npa-rw612-frdm/bsp/mcux-sdk/middleware/wifi_nxp
+      revision: MCUX_2.16.000
+      remote: nxp
+  self:
+    path: npa-rw612-frdm
+    west-commands: bsp/vee/scripts/west-commands.yml

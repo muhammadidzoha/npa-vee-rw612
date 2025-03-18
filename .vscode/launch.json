@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "mcuxpresso-debug",
+      "name": "Debug project configuration",
+      "request": "launch",
+      "cwd": "${workspaceRoot}",
+      "executable": {
+        "elf": "${command:cmake.launchTargetPath}"
+      },
+      "gdbClientPath": "",
+      "gdbServerTargetRemote": "",
+      "gdbInitCommands": [
+        "set remotetimeout 600",
+        "set debug-file-directory"
+      ],
+      "stopAtSymbol": "main",
+      "probeSerialNumber": "",
+      "isAttach": false,
+      "probeType": "",
+      "showDevDebugOutput": "none"
+    }
+  ]
+}
