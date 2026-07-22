@@ -32,6 +32,7 @@ pack-ui =               { group = "com.microej.pack.ui", name = "ui-pack", versi
 
 # Libraries
 library-logging =       { group = "ej.library.eclasspath", name = "logging", version = "1.2.1" }
+library-time =          { group = "ej.library.eclasspath", name = "time", version = "1.1.0"}
 library-checkHelper =   { group = "com.is2t.libraries", name = "checkHelper", version = "1.3.0" }
 library-mwt =           { group = "ej.library.ui", name = "mwt", version = "3.5.0" }
 library-widget =        { group = "ej.library.ui", name = "widget", version = "5.2.1" }
