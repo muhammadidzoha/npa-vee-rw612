@@ -5,3 +5,6 @@
 /asset/image/OptimalAlertL.png:ARGB8888
 /asset/image/WaspadaAlertL.png:ARGB8888
 /asset/image/BahayaAlertL.png:ARGB8888
+
+/asset/image/DotActive.png:ARGB8888
+/asset/image/DotInactive.png:ARGB8888

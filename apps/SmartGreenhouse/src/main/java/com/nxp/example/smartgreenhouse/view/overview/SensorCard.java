@@ -5,6 +5,7 @@ import com.nxp.example.smartgreenhouse.model.SensorStatus;
 import com.nxp.example.smartgreenhouse.style.ApplicationColors;
 import com.nxp.example.smartgreenhouse.style.Fonts;
 import com.nxp.example.smartgreenhouse.style.Images;
+import ej.annotation.NonNullByDefault;
 import ej.microui.display.Font;
 import ej.microui.display.GraphicsContext;
 import ej.microui.display.Image;
@@ -19,7 +20,6 @@ public class SensorCard extends Widget {
 
     private static final int ICON_LEFT_PADDING = 4;
     private static final int TITLE_TOP_PADDING = 9;
-    private static final int UNIT_GAP = 2;
     private static final int TITLE_TO_VALUE_GAP = 3;
     private static final int VALUE_TO_STATUS_GAP = 1;
 
@@ -67,6 +67,7 @@ public class SensorCard extends Widget {
     }
 
     @Override
+    @NonNullByDefault
     protected void renderContent(GraphicsContext g, int contentWidth, int contentHeight) {
         if (displayItem == null) {
             return;
@@ -108,7 +109,7 @@ public class SensorCard extends Widget {
 
         if (unit != null && !unit.isEmpty()) {
             int valueWidth = valueFont.stringWidth(valueText);
-            int unitX = valueX + valueWidth + UNIT_GAP;
+            int unitX = valueX + valueWidth;
 
             int valueBaselineY = valueY + valueFont.getBaselinePosition();
             int unitY = valueBaselineY - unitFont.getBaselinePosition();

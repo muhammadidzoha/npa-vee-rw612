@@ -12,4 +12,8 @@ public class Images {
     public static final String WASPADA_ALERT_FRAME_L = "/asset/image/WaspadaAlertL.png";
 
     public static final String BAHAYA_ALERT_FRAME_L = "/asset/image/BahayaAlertL.png";
+
+    public static final String DOT_ACTIVE = "/asset/image/DotActive.png";
+
+    public static final String DOT_INACTIVE = "/asset/image/DotInactive.png";
 }

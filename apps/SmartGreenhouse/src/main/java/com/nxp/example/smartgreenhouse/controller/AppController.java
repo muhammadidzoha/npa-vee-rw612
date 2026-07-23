@@ -1,5 +1,6 @@
 package com.nxp.example.smartgreenhouse.controller;
 
+import com.nxp.example.smartgreenhouse.model.SampleSensorData;
 import com.nxp.example.smartgreenhouse.model.SensorData;
 import com.nxp.example.smartgreenhouse.view.MainPage;
 import com.nxp.example.smartgreenhouse.view.overview.HeaderOverview;
@@ -41,18 +42,7 @@ public class AppController {
     }
 
     private void loadSensorData() {
-        SensorData dummyData = new SensorData(1, 1);
-        dummyData.setN(35);
-        dummyData.setP(20);
-        dummyData.setK(180);
-        dummyData.setSm(65);
-        dummyData.setSt(25);
-        dummyData.setpH(6.5f);
-        dummyData.setEc(1.5f);
-        dummyData.setAt(27);
-        dummyData.setAh(60);
-        dummyData.setLux(25000);
-
-        this.overviewController.updateSensorData(dummyData);
+        SensorData[] nodes = SampleSensorData.createSampleSensorData();
+        this.overviewController.setSensorNodes(nodes);
     }
 }
