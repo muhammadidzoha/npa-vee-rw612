@@ -7,6 +7,10 @@ public class Images {
 
     public static final String FOOTER_FRAME = "/asset/image/FooterFrame.png";
 
+    public static final String WIFI_FRAME = "/asset/image/WifiFrame.png";
+
+    public static final String WIFI_AUTENTIKASI_FRAME = "/asset/image/WifiAutentikasiFrame.png";
+
     public static final String MENU_FRAME = "/asset/image/MenuFrame.png";
 
     public static final String CARD_MENU_FRAME = "/asset/image/CardMenuFrame.png";

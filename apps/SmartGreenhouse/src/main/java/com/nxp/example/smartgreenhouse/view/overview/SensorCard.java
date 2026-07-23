@@ -1,7 +1,7 @@
 package com.nxp.example.smartgreenhouse.view.overview;
 
-import com.nxp.example.smartgreenhouse.model.SensorDisplayItem;
-import com.nxp.example.smartgreenhouse.model.SensorStatus;
+import com.nxp.example.smartgreenhouse.model.sensor.SensorDisplayItem;
+import com.nxp.example.smartgreenhouse.model.sensor.SensorStatus;
 import com.nxp.example.smartgreenhouse.style.ApplicationColors;
 import com.nxp.example.smartgreenhouse.style.Fonts;
 import com.nxp.example.smartgreenhouse.style.Images;

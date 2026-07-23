@@ -1,8 +1,8 @@
 package com.nxp.example.smartgreenhouse.view.overview;
 
-import com.nxp.example.smartgreenhouse.model.SensorDefinition;
-import com.nxp.example.smartgreenhouse.model.SensorDefinitionProvider;
-import com.nxp.example.smartgreenhouse.model.SensorDisplayItem;
+import com.nxp.example.smartgreenhouse.model.sensor.SensorDefinition;
+import com.nxp.example.smartgreenhouse.model.sensor.SensorDefinitionProvider;
+import com.nxp.example.smartgreenhouse.model.sensor.SensorDisplayItem;
 import com.nxp.example.smartgreenhouse.style.ApplicationColors;
 import com.nxp.example.smartgreenhouse.view.HorizontalSwipeListener;
 import ej.annotation.NonNullByDefault;

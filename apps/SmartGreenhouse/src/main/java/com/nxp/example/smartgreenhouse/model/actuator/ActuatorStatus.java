@@ -1,4 +1,4 @@
-package com.nxp.example.smartgreenhouse.model;
+package com.nxp.example.smartgreenhouse.model.actuator;
 
 public enum ActuatorStatus {
     MATI,

@@ -2,6 +2,9 @@
 /asset/image/CardFrame.png:ARGB8888
 /asset/image/FooterFrame.png:ARGB8888
 
+/asset/image/WifiFrame.png:ARGB8888
+/asset/image/WifiAutentikasiFrame.png:ARGB8888
+
 /asset/image/MenuFrame.png:ARGB8888
 /asset/image/CardMenuFrame.png:ARGB8888
 

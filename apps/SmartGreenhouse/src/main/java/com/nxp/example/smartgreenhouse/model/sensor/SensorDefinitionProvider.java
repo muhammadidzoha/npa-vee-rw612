@@ -1,4 +1,4 @@
-package com.nxp.example.smartgreenhouse.model;
+package com.nxp.example.smartgreenhouse.model.sensor;
 
 import com.nxp.example.smartgreenhouse.style.Icons;
 import ej.microui.display.Image;

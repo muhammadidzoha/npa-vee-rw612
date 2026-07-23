@@ -18,11 +18,11 @@ import ej.mwt.util.Size;
 
 public class HeaderOverview extends Widget {
 
-    public interface OnHeaderClickListener {
-        void onIconClicked();
+    public interface onWifiClickListener {
+        void onClicked();
     }
 
-    private OnHeaderClickListener onHeaderClickListener;
+    private onWifiClickListener listener;
 
     private final Image headerFrame;
     private final Image icon;
@@ -55,8 +55,8 @@ public class HeaderOverview extends Widget {
         this.time = time;
     }
 
-    public void setOnHeaderClickListener(OnHeaderClickListener onHeaderClickListener) {
-        this.onHeaderClickListener = onHeaderClickListener;
+    public void setOnWifiClickListener(onWifiClickListener listener) {
+        this.listener = listener;
     }
 
     @Override
@@ -120,8 +120,8 @@ public class HeaderOverview extends Widget {
             int y = pointer.getY();
 
             if (isWifiClicked(x, y)) {
-                if (this.onHeaderClickListener != null) {
-                    this.onHeaderClickListener.onIconClicked();
+                if (this.listener != null) {
+                    this.listener.onClicked();
                 }
                 return true;
             }

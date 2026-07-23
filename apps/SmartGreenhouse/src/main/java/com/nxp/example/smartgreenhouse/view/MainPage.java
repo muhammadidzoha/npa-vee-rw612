@@ -1,10 +1,11 @@
 package com.nxp.example.smartgreenhouse.view;
 
-import com.nxp.example.smartgreenhouse.model.SensorDisplayItem;
+import com.nxp.example.smartgreenhouse.model.sensor.SensorDisplayItem;
 import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
 import com.nxp.example.smartgreenhouse.view.overview.FooterOverview;
 import com.nxp.example.smartgreenhouse.view.overview.HeaderOverview;
 import com.nxp.example.smartgreenhouse.view.overview.Overview;
+import com.nxp.example.smartgreenhouse.view.wifi.WifiContainer;
 import ej.annotation.NonNullByDefault;
 import ej.microui.display.Display;
 import ej.mwt.Container;
@@ -15,12 +16,14 @@ public class MainPage extends Container {
     private final HeaderOverview headerOverview;
     private final Overview overview;
     private final FooterOverview footerOverview;
+    private final WifiContainer wifiContainer;
     private final MenuContainer menuContainer;
 
     private final TrayLabel trayLabel;
     private final Indicator indicator;
 
     private boolean menuOpen;
+    private boolean wifiOpen;
 
 
     public MainPage() {
@@ -31,6 +34,7 @@ public class MainPage extends Container {
         this.overview = new Overview();
         this.indicator = new Indicator();
         this.footerOverview = new FooterOverview();
+        this.wifiContainer = new WifiContainer();
         this.menuContainer = new MenuContainer();
 
         addChild(overview);
@@ -38,7 +42,14 @@ public class MainPage extends Container {
         addChild(trayLabel);
         addChild(indicator);
         addChild(footerOverview);
+        addChild(wifiContainer);
         addChild(menuContainer);
+    }
+
+    public void setOnWifiClick(HeaderOverview.onWifiClickListener onWifiClick) {
+        if (this.headerOverview != null) {
+            this.headerOverview.setOnWifiClickListener(onWifiClick);
+        }
     }
 
     public void setOnOverviewSwipeListener(HorizontalSwipeListener horizontalSwipeListener) {
@@ -80,6 +91,15 @@ public class MainPage extends Container {
         if (this.overview != null) {
             this.overview.setItems(items);
         }
+    }
+
+    public boolean getWifiOpen() {
+        return this.wifiOpen;
+    }
+
+    public void setWifiOpen(boolean wifiOpen) {
+        this.wifiOpen = wifiOpen;
+        requestLayOut();
     }
 
     public void setMenuOpen(boolean menuOpen) {
@@ -125,6 +145,15 @@ public class MainPage extends Container {
 
         layOutChild(this.footerOverview, 0, footerY, contentWidth, footerHeight);
 
+        if (this.wifiContainer != null) {
+            int wifiWidth = this.wifiContainer.getWidth();
+            int wifiHeight = this.wifiContainer.getHeight();
+            int marginWifiFrame = 16;
+            int wifiX = contentWidth - wifiWidth - marginWifiFrame;
+            int wifiY = this.wifiOpen ? headerHeight : contentHeight;
+            layOutChild(this.wifiContainer, wifiX, wifiY, wifiWidth, wifiHeight);
+        }
+
         if (this.menuContainer != null) {
             int menuWidth = this.menuContainer.getWidth();
             int menuHeight = this.menuContainer.getHeight();
@@ -160,6 +189,10 @@ public class MainPage extends Container {
 
         computeChildOptimalSize(this.indicator, displayWidth, indicatorHeight);
         computeChildOptimalSize(this.footerOverview, displayWidth, footerHeight);
+
+        if (this.wifiContainer != null) {
+            computeChildOptimalSize(this.wifiContainer, this.wifiContainer.getWifiFrameWidth(), this.wifiContainer.getWifiFrameHeight());
+        }
 
         if (this.menuContainer != null) {
             computeChildOptimalSize(this.menuContainer, displayWidth, this.menuContainer.getMenuHeight());

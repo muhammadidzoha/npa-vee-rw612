@@ -1,6 +1,6 @@
 package com.nxp.example.smartgreenhouse.controller;
 
-import com.nxp.example.smartgreenhouse.model.*;
+import com.nxp.example.smartgreenhouse.model.sensor.*;
 import com.nxp.example.smartgreenhouse.view.MainPage;
 import com.nxp.example.smartgreenhouse.view.HorizontalSwipeListener;
 import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
