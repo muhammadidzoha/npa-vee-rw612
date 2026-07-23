@@ -1,6 +1,7 @@
 package com.nxp.example.smartgreenhouse.view;
 
 import com.nxp.example.smartgreenhouse.model.sensor.SensorDisplayItem;
+import com.nxp.example.smartgreenhouse.model.wifi.WifiNetwork;
 import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
 import com.nxp.example.smartgreenhouse.view.overview.FooterOverview;
 import com.nxp.example.smartgreenhouse.view.overview.HeaderOverview;
@@ -68,6 +69,10 @@ public class MainPage extends Container {
         if (this.menuContainer != null) {
             this.menuContainer.setOnSwipeDownListener(onSwipeDownListener);
         }
+    }
+
+    public void updateWifiNetworks(WifiNetwork[] networks) {
+        this.wifiContainer.setNetworks(networks);
     }
 
     public void updateTime(String time) {

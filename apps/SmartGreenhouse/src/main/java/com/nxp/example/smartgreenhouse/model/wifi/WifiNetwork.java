@@ -3,11 +3,11 @@ package com.nxp.example.smartgreenhouse.model.wifi;
 public class WifiNetwork {
 
     private final String name;
-    private final int rssi;
+    private final float rssi;
     private final boolean secured;
     private final boolean connected;
 
-    public WifiNetwork(String name, int rssi, boolean secured, boolean connected) {
+    public WifiNetwork(String name, float rssi, boolean secured, boolean connected) {
         this.name = name;
         this.rssi = rssi;
         this.secured = secured;
@@ -18,7 +18,7 @@ public class WifiNetwork {
         return name;
     }
 
-    public int getRssi() {
+    public float getRssi() {
         return rssi;
     }
 
