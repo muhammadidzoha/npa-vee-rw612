@@ -1,6 +1,6 @@
 package com.nxp.example.smartgreenhouse.view;
 
-public interface SwipeListener {
+public interface HorizontalSwipeListener {
     void onSwipeLeft();
     void onSwipeRight();
 }

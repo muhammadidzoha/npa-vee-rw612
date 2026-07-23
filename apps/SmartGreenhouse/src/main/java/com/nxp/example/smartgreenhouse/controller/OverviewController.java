@@ -2,12 +2,17 @@ package com.nxp.example.smartgreenhouse.controller;
 
 import com.nxp.example.smartgreenhouse.model.*;
 import com.nxp.example.smartgreenhouse.view.MainPage;
-import com.nxp.example.smartgreenhouse.view.SwipeListener;
+import com.nxp.example.smartgreenhouse.view.HorizontalSwipeListener;
+import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
+import com.nxp.example.smartgreenhouse.view.overview.FooterOverview;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
-public class OverviewController implements SwipeListener {
+public class OverviewController implements HorizontalSwipeListener, FooterOverview.onSwipeUpListener, MenuContainer.onSwipeDownListener {
+
+    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: OverviewController]");
 
     private final MainPage mainPage;
     private SensorData[] sensorNodes;
@@ -19,9 +24,9 @@ public class OverviewController implements SwipeListener {
     }
 
     public void init() {
-        int visibleCount = countVisibleSensors();
-        mainPage.initOverview(visibleCount);
         mainPage.setOnOverviewSwipeListener(this);
+        mainPage.setOnFooterSwipeListener(this);
+        mainPage.setOnMenuContainerSwipeListener(this);
     }
 
     public void setSensorNodes(SensorData[] nodes) {
@@ -56,6 +61,16 @@ public class OverviewController implements SwipeListener {
         }
     }
 
+    @Override
+    public void onSwipeUp() {
+        this.mainPage.setMenuOpen(true);
+    }
+
+    @Override
+    public void onSwipeDown() {
+        this.mainPage.setMenuOpen(false);
+    }
+
     private void updateDisplay() {
         String text = "TRAY " + (this.currentIndex + 1);
         mainPage.updateTrayLabel(text);
@@ -79,15 +94,5 @@ public class OverviewController implements SwipeListener {
         items.toArray(result);
 
         mainPage.updateSensorCards(result);
-    }
-
-    private int countVisibleSensors() {
-        int count = 0;
-        for (SensorDefinition def : SensorDefinitionProvider.getAll()) {
-            if (def.isVisible()) {
-                count++;
-            }
-        }
-        return count;
     }
 }

@@ -1,8 +1,10 @@
 package com.nxp.example.smartgreenhouse.view.overview;
 
+import com.nxp.example.smartgreenhouse.model.SensorDefinition;
+import com.nxp.example.smartgreenhouse.model.SensorDefinitionProvider;
 import com.nxp.example.smartgreenhouse.model.SensorDisplayItem;
 import com.nxp.example.smartgreenhouse.style.ApplicationColors;
-import com.nxp.example.smartgreenhouse.view.SwipeListener;
+import com.nxp.example.smartgreenhouse.view.HorizontalSwipeListener;
 import ej.annotation.NonNullByDefault;
 import ej.microui.display.GraphicsContext;
 import ej.microui.display.Painter;
@@ -14,28 +16,32 @@ import ej.widget.container.Grid;
 public class Overview extends Grid {
 
     private static final int COLUMN_COUNT = 3;
-    private static final int SWIPE_THRESHOLD = 50;
+    private static final int SWIPE_THRESHOLD = 35;
 
     private int touchStartX;
     private int touchStartY;
 
     private final SensorCard[] sensorCards;
-    private SwipeListener swipeListener;
+    private HorizontalSwipeListener horizontalSwipeListener;
 
-    public Overview(int sensorCount) {
+    public Overview() {
         super(true, COLUMN_COUNT);
         setEnabled(true);
 
-        this.sensorCards = new SensorCard[sensorCount];
+        int count = 0;
+        for (SensorDefinition def : SensorDefinitionProvider.getAll()) {
+            if (def.isVisible()) count++;
+        }
 
-        for (int i = 0; i < sensorCount; i++) {
+        this.sensorCards = new SensorCard[count];
+        for (int i = 0; i < count; i++) {
             this.sensorCards[i] = new SensorCard();
             addChild(this.sensorCards[i]);
         }
     }
 
-    public void setOnSwipeListener(SwipeListener swipeListener) {
-        this.swipeListener = swipeListener;
+    public void setOnSwipeListener(HorizontalSwipeListener horizontalSwipeListener) {
+        this.horizontalSwipeListener = horizontalSwipeListener;
     }
 
     public void setItems(SensorDisplayItem[] items) {
@@ -79,10 +85,10 @@ public class Overview extends Grid {
             int deltaY = y - this.touchStartY;
 
             if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > SWIPE_THRESHOLD) {
-                if (deltaX < 0 && this.swipeListener != null) {
-                    this.swipeListener.onSwipeLeft();
-                } else if (deltaX > 0 && this.swipeListener != null) {
-                    this.swipeListener.onSwipeRight();
+                if (deltaX < 0 && this.horizontalSwipeListener != null) {
+                    this.horizontalSwipeListener.onSwipeLeft();
+                } else if (deltaX > 0 && this.horizontalSwipeListener != null) {
+                    this.horizontalSwipeListener.onSwipeRight();
                 }
                 return true;
             }

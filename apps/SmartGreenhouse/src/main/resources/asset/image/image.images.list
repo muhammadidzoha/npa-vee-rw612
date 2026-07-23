@@ -2,6 +2,9 @@
 /asset/image/CardFrame.png:ARGB8888
 /asset/image/FooterFrame.png:ARGB8888
 
+/asset/image/MenuFrame.png:ARGB8888
+/asset/image/CardMenuFrame.png:ARGB8888
+
 /asset/image/OptimalAlertL.png:ARGB8888
 /asset/image/WaspadaAlertL.png:ARGB8888
 /asset/image/BahayaAlertL.png:ARGB8888

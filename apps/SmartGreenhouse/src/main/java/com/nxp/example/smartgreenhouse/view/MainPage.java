@@ -1,6 +1,7 @@
 package com.nxp.example.smartgreenhouse.view;
 
 import com.nxp.example.smartgreenhouse.model.SensorDisplayItem;
+import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
 import com.nxp.example.smartgreenhouse.view.overview.FooterOverview;
 import com.nxp.example.smartgreenhouse.view.overview.HeaderOverview;
 import com.nxp.example.smartgreenhouse.view.overview.Overview;
@@ -12,33 +13,49 @@ import ej.mwt.util.Size;
 public class MainPage extends Container {
 
     private final HeaderOverview headerOverview;
-    private Overview overview;
+    private final Overview overview;
     private final FooterOverview footerOverview;
+    private final MenuContainer menuContainer;
 
     private final TrayLabel trayLabel;
     private final Indicator indicator;
 
+    private boolean menuOpen;
+
 
     public MainPage() {
+        setEnabled(true);
+
         this.headerOverview = new HeaderOverview();
         this.trayLabel = new TrayLabel();
+        this.overview = new Overview();
         this.indicator = new Indicator();
         this.footerOverview = new FooterOverview();
+        this.menuContainer = new MenuContainer();
 
+        addChild(overview);
         addChild(headerOverview);
         addChild(trayLabel);
         addChild(indicator);
         addChild(footerOverview);
+        addChild(menuContainer);
     }
 
-    public void initOverview(int sensorCount) {
-        this.overview = new Overview(sensorCount);
-        addChild(this.overview);
-    }
-
-    public void setOnOverviewSwipeListener(SwipeListener swipeListener) {
+    public void setOnOverviewSwipeListener(HorizontalSwipeListener horizontalSwipeListener) {
         if (this.overview != null) {
-            this.overview.setOnSwipeListener(swipeListener);
+            this.overview.setOnSwipeListener(horizontalSwipeListener);
+        }
+    }
+
+    public void setOnFooterSwipeListener(FooterOverview.onSwipeUpListener onSwipeUpListener) {
+        if (this.footerOverview != null) {
+            this.footerOverview.setOnSwipeUpListener(onSwipeUpListener);
+        }
+    }
+
+    public void setOnMenuContainerSwipeListener(MenuContainer.onSwipeDownListener onSwipeDownListener) {
+        if (this.menuContainer != null) {
+            this.menuContainer.setOnSwipeDownListener(onSwipeDownListener);
         }
     }
 
@@ -63,6 +80,11 @@ public class MainPage extends Container {
         if (this.overview != null) {
             this.overview.setItems(items);
         }
+    }
+
+    public void setMenuOpen(boolean menuOpen) {
+        this.menuOpen = menuOpen;
+        requestLayOut();
     }
 
     public HeaderOverview getHeaderOverview() {
@@ -102,6 +124,15 @@ public class MainPage extends Container {
         layOutChild(this.indicator, 0, indicatorY, contentWidth, indicatorHeight);
 
         layOutChild(this.footerOverview, 0, footerY, contentWidth, footerHeight);
+
+        if (this.menuContainer != null) {
+            int menuWidth = this.menuContainer.getWidth();
+            int menuHeight = this.menuContainer.getHeight();
+            int menuX = (contentWidth - menuWidth) / 2;
+            int menuOpenY = contentHeight - menuHeight;
+            int menuY = this.menuOpen ? menuOpenY : contentHeight;
+            layOutChild(this.menuContainer, menuX, menuY, menuWidth, menuHeight);
+        }
     }
 
     @Override
@@ -129,6 +160,10 @@ public class MainPage extends Container {
 
         computeChildOptimalSize(this.indicator, displayWidth, indicatorHeight);
         computeChildOptimalSize(this.footerOverview, displayWidth, footerHeight);
+
+        if (this.menuContainer != null) {
+            computeChildOptimalSize(this.menuContainer, displayWidth, this.menuContainer.getMenuHeight());
+        }
 
         size.setSize(displayWidth, displayHeight);
     }
