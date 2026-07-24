@@ -4,6 +4,7 @@ import com.nxp.example.smartgreenhouse.model.menu.MenuItemData;
 import com.nxp.example.smartgreenhouse.model.sensor.SensorDisplayItem;
 import com.nxp.example.smartgreenhouse.model.wifi.WifiNetwork;
 import com.nxp.example.smartgreenhouse.view.detail.SensorDetail;
+import com.nxp.example.smartgreenhouse.view.linechart.ChartPoint;
 import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
 import com.nxp.example.smartgreenhouse.view.overview.FooterOverview;
 import com.nxp.example.smartgreenhouse.view.overview.HeaderOverview;
@@ -129,9 +130,9 @@ public class MainPage extends Container {
         this.sensorDetail.setDetailTitle(text);
     }
 
-    public void updateSensorDetail(String title, SensorDisplayItem item, double minValue, double maxValue) {
+    public void updateSensorDetail(String title, SensorDisplayItem item, double minValue, double maxValue, ChartPoint[] historyPoints) {
         this.sensorDetail.setDetailTitle(title);
-        this.sensorDetail.setSensorItem(item, minValue, maxValue);
+        this.sensorDetail.setSensorItem(item, minValue, maxValue, historyPoints);
     }
 
     public void clearSensorDetail() {

@@ -228,38 +228,26 @@ public class GaugeWidget extends Widget {
         int sensorId = this.item.getDefinition().getSensorId();
 
         Font valueFont = getValueFont(sensorId);
-
         Font unitFont = Fonts.jetbrainsMonoBold12px();
 
         String valueText = this.item.getFormattedValue();
-
         String unit = this.item.getDefinition().getUnit();
-
         int valueWidth = valueFont.stringWidth(valueText);
-
         int unitWidth = 0;
-
         if (unit != null && !unit.isEmpty()) {
             unitWidth = UNIT_GAP + unitFont.stringWidth(unit);
         }
 
         int totalWidth = valueWidth + unitWidth;
-
         int valueX = offsetX + ((WIDGET_WIDTH - totalWidth) / 2);
-
-        int valueY = offsetY + VALUE_CENTER_Y - (valueFont.getHeight() / 2);
-
+        int valueY = offsetY + VALUE_CENTER_Y - (valueFont.getHeight() / 2) + 7;
         g.setColor(ApplicationColors.SECONDARY_COLOR);
-
         Painter.drawString(g, valueText, valueFont, valueX, valueY);
 
         if (unit != null && !unit.isEmpty()) {
             int unitX = valueX + valueWidth + UNIT_GAP;
-
             int valueBaselineY = valueY + valueFont.getBaselinePosition();
-
             int unitY = valueBaselineY - unitFont.getBaselinePosition();
-
             Painter.drawString(g, unit, unitFont, unitX, unitY);
         }
     }
@@ -271,35 +259,22 @@ public class GaugeWidget extends Widget {
         return Fonts.jetbrainsMonoBold16px();
     }
 
-    private void drawSensorStatus(
-            GraphicsContext g,
-            int offsetX,
-            int offsetY
-    ) {
+    private void drawSensorStatus(GraphicsContext g, int offsetX, int offsetY) {
         SensorStatus sensorStatus = this.item.getSensorStatus();
 
         Image statusImage = getStatusImage(sensorStatus);
-
         Font statusFont = Fonts.jetbrainsMonoRegular9px();
-
         String statusText = sensorStatus.name();
 
         int arcCenterX = offsetX + ARC_X + ((ARC_DIAMETER + 1) / 2);
-
         int statusX = arcCenterX - (statusImage.getWidth() / 2);
-
         int statusY = offsetY + STATUS_TOP;
-
         Painter.drawImage(g, statusImage, statusX, statusY);
 
         int statusTextWidth = statusFont.stringWidth(statusText);
-
         int statusTextX = statusX + ((statusImage.getWidth() - statusTextWidth) / 2) + STATUS_TEXT_OFFSET_X;
-
         int statusTextY = statusY + ((statusImage.getHeight() - statusFont.getHeight()) / 2) + STATUS_TEXT_OFFSET_Y;
-
         g.setColor(getStatusColor(sensorStatus));
-
         Painter.drawString(g, statusText, statusFont, statusTextX, statusTextY);
     }
 
