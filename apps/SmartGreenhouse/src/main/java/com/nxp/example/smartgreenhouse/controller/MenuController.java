@@ -52,9 +52,10 @@ public class MenuController implements HorizontalSwipeListener {
         System.arraycopy(this.allItems, start, pageItems, 0, count);
 
         this.mainPage.updateMenuItems(pageItems);
-//        this.mainPage.updateMenuIndicator(
-//                (this.allItems.length + CARDS_PER_PAGE - 1) / CARDS_PER_PAGE,
-//                this.currentPage
-//        );
+        this.mainPage.updateMenuIndicator(getPageCount(), this.currentPage);
+    }
+
+    private int getPageCount() {
+        return (this.allItems.length + CARDS_PER_PAGE - 1) / CARDS_PER_PAGE;
     }
 }

@@ -107,6 +107,10 @@ public class MainPage extends Container {
         this.menuContainer.setItems(items);
     }
 
+    public void updateMenuIndicator(int total, int selected) {
+        this.menuContainer.setIndicator(total, selected);
+    }
+
     public boolean getWifiOpen() {
         return this.wifiOpen;
     }

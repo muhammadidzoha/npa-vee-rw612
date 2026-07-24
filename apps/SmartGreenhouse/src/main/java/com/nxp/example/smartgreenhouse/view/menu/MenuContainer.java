@@ -29,10 +29,12 @@ public class MenuContainer extends Container {
     private static final int CARD_ROWS = 2;
     private static final int CARD_GAP_X = 8;
     private static final int CARD_GAP_Y = 8;
+    private static final int INDICATOR_BOTTOM_GAP = 6;
 
     private final Image menuFrame;
     private final MenuHeader menuHeader;
     private MenuCard[] cards;
+    private final MenuFooter menuFooter;
 
     private onSwipeDownListener onSwipeDownListener;
     private HorizontalSwipeListener horizontalSwipeListener;
@@ -41,6 +43,7 @@ public class MenuContainer extends Container {
         setEnabled(true);
         this.menuFrame = Image.getImage(Images.MENU_FRAME);
         this.menuHeader = new MenuHeader();
+        this.menuFooter = new MenuFooter();
     }
 
     public int getMenuWidth() {
@@ -76,6 +79,12 @@ public class MenuContainer extends Container {
 
     public void setOnSwipeDownListener(onSwipeDownListener listener) {
         this.onSwipeDownListener = listener;
+    }
+
+    public void setIndicator(int total, int selected) {
+        this.menuFooter.setPageCount(total);
+        this.menuFooter.setCurrentPage(selected);
+        requestRender();
     }
 
     @Override
@@ -123,6 +132,8 @@ public class MenuContainer extends Container {
 
         this.menuHeader.render(g, contentWidth);
 
+        this.menuFooter.render(g, contentWidth, contentHeight);
+        
         super.renderContent(g, contentWidth, contentHeight);
     }
 
