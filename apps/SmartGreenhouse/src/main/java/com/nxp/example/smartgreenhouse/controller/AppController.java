@@ -8,11 +8,13 @@ public class AppController {
     private final MainPage mainPage;
     private final HeaderController headerController;
     private final OverviewController overviewController;
+    private final MenuController menuController;
 
     public AppController() {
         this.mainPage = new MainPage();
         this.headerController = new HeaderController(this.mainPage);
         this.overviewController = new OverviewController(this.mainPage);
+        this.menuController = new MenuController(this.mainPage);
     }
 
     public MainPage getMainPage() {
@@ -22,6 +24,7 @@ public class AppController {
     public void start() {
         this.headerController.init();
         this.overviewController.init();
+        this.menuController.init();
         loadSensorData();
     }
 
