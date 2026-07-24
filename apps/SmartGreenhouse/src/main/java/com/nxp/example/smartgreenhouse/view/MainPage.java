@@ -3,6 +3,7 @@ package com.nxp.example.smartgreenhouse.view;
 import com.nxp.example.smartgreenhouse.model.menu.MenuItemData;
 import com.nxp.example.smartgreenhouse.model.sensor.SensorDisplayItem;
 import com.nxp.example.smartgreenhouse.model.wifi.WifiNetwork;
+import com.nxp.example.smartgreenhouse.view.detail.SensorDetail;
 import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
 import com.nxp.example.smartgreenhouse.view.overview.FooterOverview;
 import com.nxp.example.smartgreenhouse.view.overview.HeaderOverview;
@@ -20,12 +21,14 @@ public class MainPage extends Container {
     private final FooterOverview footerOverview;
     private final WifiContainer wifiContainer;
     private final MenuContainer menuContainer;
+    private final SensorDetail sensorDetail;
 
     private final TrayLabel trayLabel;
     private final Indicator indicator;
 
     private boolean menuOpen;
     private boolean wifiOpen;
+    private boolean sensorDetailOpen;
 
 
     public MainPage() {
@@ -39,6 +42,8 @@ public class MainPage extends Container {
         this.wifiContainer = new WifiContainer();
         this.menuContainer = new MenuContainer();
 
+        this.sensorDetail = new SensorDetail();
+
         addChild(overview);
         addChild(headerOverview);
         addChild(trayLabel);
@@ -46,6 +51,8 @@ public class MainPage extends Container {
         addChild(footerOverview);
         addChild(wifiContainer);
         addChild(menuContainer);
+
+        addChild(sensorDetail);
     }
 
     public void setOnWifiClick(HeaderOverview.onWifiClickListener onWifiClick) {
@@ -78,6 +85,10 @@ public class MainPage extends Container {
 
     public void setOnMenuItemClickListener(MenuContainer.OnMenuItemClickListener listener) {
         this.menuContainer.setOnMenuItemClickListener(listener);
+    }
+
+    public void setOnSensorDetailBackListener(SensorDetail.onBackListener listener) {
+        this.sensorDetail.setOnBackListener(listener);
     }
 
     public void updateWifiNetworks(WifiNetwork[] networks) {
@@ -114,6 +125,20 @@ public class MainPage extends Container {
         this.menuContainer.setIndicator(total, selected);
     }
 
+    public void updateSensorDetailTitle(String text) {
+        this.sensorDetail.setDetailTitle(text);
+    }
+
+    public void updateSensorDetail(String title, SensorDisplayItem item, double minValue, double maxValue) {
+        this.sensorDetail.setDetailTitle(title);
+        this.sensorDetail.setSensorItem(item, minValue, maxValue);
+    }
+
+    public void clearSensorDetail() {
+        this.sensorDetail.setDetailTitle("");
+        this.sensorDetail.clearSensorItem();
+    }
+
     public boolean isWifiOpen() {
         return this.wifiOpen;
     }
@@ -138,6 +163,34 @@ public class MainPage extends Container {
     public void closeWifi() {
         this.wifiOpen = false;
         requestLayOut();
+    }
+
+    public void openSensorDetail() {
+        this.menuOpen = false;
+        this.wifiOpen = false;
+        this.sensorDetailOpen = true;
+
+        this.sensorDetail.setEnabled(true);
+        this.overview.setEnabled(false);
+        this.footerOverview.setEnabled(false);
+        this.headerOverview.setEnabled(false);
+        this.menuContainer.setEnabled(false);
+
+        requestLayOut();
+        requestRender();
+    }
+
+    public void closeSensorDetail() {
+        this.sensorDetailOpen = false;
+
+        this.sensorDetail.setEnabled(false);
+        this.overview.setEnabled(true);
+        this.footerOverview.setEnabled(true);
+        this.headerOverview.setEnabled(true);
+        this.menuContainer.setEnabled(true);
+
+        requestLayOut();
+        requestRender();
     }
 
     public HeaderOverview getHeaderOverview() {
@@ -195,6 +248,10 @@ public class MainPage extends Container {
             int menuY = this.menuOpen ? menuOpenY : contentHeight;
             layOutChild(this.menuContainer, menuX, menuY, menuWidth, menuHeight);
         }
+
+        int sensorDetailY = this.sensorDetailOpen ? 0 : contentHeight;
+
+        layOutChild(this.sensorDetail, 0, sensorDetailY, contentWidth, contentHeight);
     }
 
     @Override
@@ -229,6 +286,10 @@ public class MainPage extends Container {
 
         if (this.menuContainer != null) {
             computeChildOptimalSize(this.menuContainer, displayWidth, this.menuContainer.getMenuHeight());
+        }
+
+        if (this.sensorDetail != null) {
+            computeChildOptimalSize(this.sensorDetail, displayWidth, displayHeight);
         }
 
         size.setSize(displayWidth, displayHeight);

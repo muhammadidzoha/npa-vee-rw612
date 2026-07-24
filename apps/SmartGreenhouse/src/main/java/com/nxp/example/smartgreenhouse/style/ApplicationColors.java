@@ -13,4 +13,9 @@ public class ApplicationColors {
     public static final int ARC_BACKGROUND_COLOR = 0xDCE0E7;
     public static final int ARC_PROGRESS_START_COLOR = 0x4390D6;
     public static final int ARC_PROGRESS_END_COLOR = 0x92B2D6;
+
+    public static final int GRAPH_LINE_COLOR = 0xD5DAE3;
+    public static final int POINT_COLOR = 0x2773DB;
+    public static final int POINT_SELECTED_COLOR = 0xD74355;
+    public static final int LINE_COLOR = 0x2773DB;
 }

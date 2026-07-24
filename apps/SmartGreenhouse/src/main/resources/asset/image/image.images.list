@@ -1,4 +1,5 @@
 /asset/image/HeaderFrame.png:ARGB4444
+/asset/image/HeaderDetailFrame.png:ARGB4444
 /asset/image/CardFrame.png:ARGB8888
 /asset/image/FooterFrame.png:ARGB8888
 
@@ -16,3 +17,5 @@
 
 /asset/image/DotActive.png:ARGB8888
 /asset/image/DotInactive.png:ARGB8888
+
+/asset/image/GrafikFrame.png:ARGB8888

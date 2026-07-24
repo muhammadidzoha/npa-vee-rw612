@@ -3,6 +3,8 @@ package com.nxp.example.smartgreenhouse.style;
 public class Images {
     public static final String HEADER_FRAME = "/asset/image/HeaderFrame.png";
 
+    public static final String HEADER_DETAIL_FRAME = "/asset/image/HeaderDetailFrame.png";
+
     public static final String CARD_FRAME = "/asset/image/CardFrame.png";
 
     public static final String FOOTER_FRAME = "/asset/image/FooterFrame.png";
@@ -28,4 +30,6 @@ public class Images {
     public static final String DOT_ACTIVE = "/asset/image/DotActive.png";
 
     public static final String DOT_INACTIVE = "/asset/image/DotInactive.png";
+
+    public static final String GRAFIK_FRAME = "/asset/image/GrafikFrame.png";
 }

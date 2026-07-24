@@ -12,6 +12,7 @@ public class AppController {
     private final HeaderController headerController;
     private final OverviewController overviewController;
     private final MenuController menuController;
+    private final DetailController detailController;
 
     public AppController() {
         this.mainPage = new MainPage();
@@ -20,7 +21,8 @@ public class AppController {
 
         this.headerController = new HeaderController(this.mainPage);
         this.overviewController = new OverviewController(this.mainPage, appState, sensorDataStore);
-        this.menuController = new MenuController(this.mainPage, appState);
+        this.detailController = new DetailController(this.mainPage, appState, sensorDataStore);
+        this.menuController = new MenuController(this.mainPage, appState, this.detailController);
     }
 
     public MainPage getMainPage() {
@@ -31,6 +33,7 @@ public class AppController {
         this.headerController.init();
         this.overviewController.init();
         this.menuController.init();
+        this.detailController.init();
         loadSensorData();
     }
 

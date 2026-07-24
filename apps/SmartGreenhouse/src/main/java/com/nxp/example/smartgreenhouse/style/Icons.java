@@ -32,4 +32,6 @@ public class Icons {
 
     public static final String SWIPE_UP_ICON_24 = "/asset/icon/SwipeUpIcon24.png";
 
+    public static final String BACK_ICON_24 = "/asset/icon/BackIcon24.png";
+
 }

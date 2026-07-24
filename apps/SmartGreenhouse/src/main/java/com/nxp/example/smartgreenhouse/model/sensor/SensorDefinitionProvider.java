@@ -94,4 +94,14 @@ public class SensorDefinitionProvider {
     public static SensorDefinition[] getAll() {
         return DEFINITIONS;
     }
+
+    public static SensorDefinition getById(int sensorId) {
+        for (SensorDefinition definition : DEFINITIONS) {
+            if (definition.getSensorId() == sensorId) {
+                return definition;
+            }
+        }
+
+        return null;
+    }
 }

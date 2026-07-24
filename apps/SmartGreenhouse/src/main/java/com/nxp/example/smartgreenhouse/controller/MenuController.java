@@ -20,13 +20,15 @@ public class MenuController implements HorizontalSwipeListener, MenuContainer.On
 
     private final MainPage mainPage;
     private final AppState appState;
+    private final DetailController detailController;
 
     private MenuItemData[] allItems;
     private int currentPage;
 
-    public MenuController(MainPage mainPage, AppState appState) {
+    public MenuController(MainPage mainPage, AppState appState, DetailController detailController) {
         this.mainPage = mainPage;
         this.appState = appState;
+        this.detailController = detailController;
     }
 
     public void init() {
@@ -60,9 +62,14 @@ public class MenuController implements HorizontalSwipeListener, MenuContainer.On
 
         this.appState.setSelectedMenuItem(item);
 
-        String type = item.isSensor() ? "SENSOR" : "ACTUATOR";
+        if (item.isSensor()) {
+            LOGGER.log(Level.INFO, "Opening sensor detail: " + item.getTitle() + " | Node: " + this.appState.getSelectedNodeId() + " | Sensor ID: " + item.getSensorId());
 
-        LOGGER.log(Level.INFO, "Menu clicked: [" + type + "] " + item.getTitle() + " | Node: " + this.appState.getSelectedNodeId() + " | ID: " + (item.isSensor() ? item.getSensorId() : item.getActuatorId()));
+            this.detailController.openSelectedSensor();
+            return;
+        }
+
+        LOGGER.log(Level.INFO, "Actuator detail is not implemented: " + item.getTitle() + " | Node: " + this.appState.getSelectedNodeId() + " | Actuator ID: " + item.getActuatorId());
     }
 
     private void showPage(int pageIndex) {
