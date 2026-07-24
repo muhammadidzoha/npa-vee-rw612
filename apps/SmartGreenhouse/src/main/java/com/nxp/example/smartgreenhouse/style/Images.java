@@ -32,4 +32,10 @@ public class Images {
     public static final String DOT_INACTIVE = "/asset/image/DotInactive.png";
 
     public static final String GRAFIK_FRAME = "/asset/image/GrafikFrame.png";
+
+    public static final String HISTORY_CARD_FRAME = "/asset/image/HistoryCardFrame.png";
+
+    public static final String HISTORY_UPDATE_CARD_FRAME = "/asset/image/HistoryUpdateCardFrame.png";
+
+    public static final String OPTIMAL_FRAME = "/asset/image/OptimalFrame.png";
 }

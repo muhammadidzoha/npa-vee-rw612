@@ -59,17 +59,23 @@ public class DetailController implements SensorDetail.onBackListener {
         SensorDisplayItem currentDisplayItem = SensorDisplayBuilder.build(definition, currentSensorData);
 
         double gaugeMinimum = SensorGaugeRangeProvider.getMinimum(sensorId);
-
         double gaugeMaximum = SensorGaugeRangeProvider.getMaximum(sensorId);
 
         SensorHistoryEntry[] historyEntries = this.sensorHistoryStore.getByNodeId(nodeId);
 
         ChartPoint[] historyPoints = buildChartPoints(historyEntries, definition);
 
+        SensorHistorySummary historySummary = SensorHistorySummaryCalculate.calculate(historyEntries, definition);
+
+        SensorThreshold sensorThreshold = SensorThresholdProvider.getBySensorId(sensorId);
+        if (sensorThreshold == null) {
+            this.mainPage.closeSensorDetail();
+            return;
+        }
+
         String title = definition.getTitle() + " - TRAY " + nodeId;
 
-        this.mainPage.updateSensorDetail(title, currentDisplayItem, gaugeMinimum, gaugeMaximum, historyPoints);
-
+        this.mainPage.updateSensorDetail(title, currentDisplayItem, gaugeMinimum, gaugeMaximum, historyPoints, historySummary, sensorThreshold);
         this.mainPage.openSensorDetail();
     }
 
