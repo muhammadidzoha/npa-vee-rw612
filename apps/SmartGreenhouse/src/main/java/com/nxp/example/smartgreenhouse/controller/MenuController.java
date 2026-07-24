@@ -2,27 +2,38 @@ package com.nxp.example.smartgreenhouse.controller;
 
 import com.nxp.example.smartgreenhouse.model.menu.MenuItemData;
 import com.nxp.example.smartgreenhouse.model.menu.SampleMenuItemData;
+import com.nxp.example.smartgreenhouse.state.AppState;
 import com.nxp.example.smartgreenhouse.view.HorizontalSwipeListener;
 import com.nxp.example.smartgreenhouse.view.MainPage;
+import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
 
-public class MenuController implements HorizontalSwipeListener {
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+public class MenuController implements HorizontalSwipeListener, MenuContainer.OnMenuItemClickListener {
+
+    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: MENU CONTROLLER]");
 
     private static final int CARD_COLUMNS = 3;
     private static final int CARD_ROWS = 2;
     private static final int CARDS_PER_PAGE = CARD_COLUMNS * CARD_ROWS;
 
     private final MainPage mainPage;
+    private final AppState appState;
+
     private MenuItemData[] allItems;
     private int currentPage;
 
-    public MenuController(MainPage mainPage) {
+    public MenuController(MainPage mainPage, AppState appState) {
         this.mainPage = mainPage;
+        this.appState = appState;
     }
 
     public void init() {
         this.allItems = SampleMenuItemData.createSampleMenuItems();
         this.currentPage = 0;
         this.mainPage.setOnMenuSwipeListener(this);
+        this.mainPage.setOnMenuItemClickListener(this);
         showPage(0);
     }
 
@@ -39,6 +50,19 @@ public class MenuController implements HorizontalSwipeListener {
         if (this.currentPage > 0) {
             showPage(this.currentPage - 1);
         }
+    }
+
+    @Override
+    public void onMenuItemClicked(MenuItemData item) {
+        if (item == null) {
+            return;
+        }
+
+        this.appState.setSelectedMenuItem(item);
+
+        String type = item.isSensor() ? "SENSOR" : "ACTUATOR";
+
+        LOGGER.log(Level.INFO, "Menu clicked: [" + type + "] " + item.getTitle() + " | Node: " + this.appState.getSelectedNodeId() + " | ID: " + (item.isSensor() ? item.getSensorId() : item.getActuatorId()));
     }
 
     private void showPage(int pageIndex) {

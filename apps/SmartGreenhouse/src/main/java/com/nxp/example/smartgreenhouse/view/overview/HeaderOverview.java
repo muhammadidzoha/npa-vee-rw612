@@ -53,6 +53,7 @@ public class HeaderOverview extends Widget {
 
     public void setTime(String time) {
         this.time = time;
+        requestRender();
     }
 
     public void setOnWifiClickListener(onWifiClickListener listener) {

@@ -69,6 +69,9 @@ public class SensorCard extends Widget {
     @Override
     @NonNullByDefault
     protected void renderContent(GraphicsContext g, int contentWidth, int contentHeight) {
+        g.setColor(ApplicationColors.BACKGROUND);
+        Painter.fillRectangle(g, 0, 0, contentWidth, contentHeight);
+
         if (displayItem == null) {
             return;
         }
@@ -83,9 +86,6 @@ public class SensorCard extends Widget {
         String unit = displayItem.getDefinition().getUnit();
         String valueText = displayItem.getFormattedValue();
         SensorStatus status = displayItem.getSensorStatus();
-
-        g.setColor(ApplicationColors.BACKGROUND);
-        Painter.fillRectangle(g, 0, 0, contentWidth, contentHeight);
 
         int imageX = (contentWidth - this.sensorCardFrame.getWidth()) / 2;
         int imageY = (contentHeight - this.sensorCardFrame.getHeight()) / 2;

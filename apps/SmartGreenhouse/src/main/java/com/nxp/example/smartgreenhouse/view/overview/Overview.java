@@ -45,10 +45,12 @@ public class Overview extends Grid {
     }
 
     public void setItems(SensorDisplayItem[] items) {
-        int count = Math.min(items.length, this.sensorCards.length);
+        int itemCount = Math.min(items.length, this.sensorCards.length);
 
-        for (int i = 0; i < count; i++) {
-            this.sensorCards[i].setDisplayItem(items[i]);
+        for (int i = 0; i < this.sensorCards.length; i++) {
+            SensorDisplayItem item = i < itemCount ? items[i] : null;
+
+            this.sensorCards[i].setDisplayItem(item);
         }
 
         requestRender();

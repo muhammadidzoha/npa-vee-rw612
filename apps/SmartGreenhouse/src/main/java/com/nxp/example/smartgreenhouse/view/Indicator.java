@@ -35,7 +35,14 @@ public class Indicator extends Widget {
     }
 
     public void setTotal(int total) {
-        this.total = total;
+        this.total = Math.max(0, total);
+
+        if (this.total == 0) {
+            this.selected = 0;
+        } else if (this.selected >= this.total) {
+            this.selected = this.total - 1;
+        }
+        requestLayOut();
         requestRender();
     }
 
@@ -44,14 +51,28 @@ public class Indicator extends Widget {
     }
 
     public void setSelected(int selected) {
-        this.selected = selected;
+        if (this.total <= 0) {
+            this.selected = 0;
+        } else if (selected < 0) {
+            this.selected = 0;
+        } else if (selected >= this.total) {
+            this.selected = this.total - 1;
+        } else {
+            this.selected = selected;
+        }
         requestRender();
     }
 
     @Override
     protected void computeContentOptimalSize(Size size) {
-        int dotWidth = this.activeDot.getWidth();
         int dotHeight = this.activeDot.getHeight();
+
+        if (this.total <= 0) {
+            size.setSize(0, dotHeight);
+            return;
+        }
+
+        int dotWidth = this.activeDot.getWidth();
         int totalWidth = (dotWidth * this.total) + (DOT_GAP * (this.total - 1));
 
         size.setSize(totalWidth, dotHeight);
@@ -62,6 +83,10 @@ public class Indicator extends Widget {
     protected void renderContent(GraphicsContext g, int contentWidth, int contentHeight) {
         g.setColor(ApplicationColors.BACKGROUND);
         Painter.fillRectangle(g, 0, 0, contentWidth, contentHeight);
+
+        if (this.total <= 0) {
+            return;
+        }
 
         int dotWidth = this.activeDot.getWidth();
         int dotHeight = this.activeDot.getHeight();

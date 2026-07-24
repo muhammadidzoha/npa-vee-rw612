@@ -27,6 +27,7 @@ public class Main {
         app.start();
 
         createDesktop(stylesheet, app.getMainPage());
+
     }
 
     private static void createDesktop(CascadingStylesheet stylesheet, Widget rootWidget) {

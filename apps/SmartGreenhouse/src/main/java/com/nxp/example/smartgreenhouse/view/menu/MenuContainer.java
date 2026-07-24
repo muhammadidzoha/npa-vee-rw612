@@ -3,7 +3,6 @@ package com.nxp.example.smartgreenhouse.view.menu;
 import com.nxp.example.smartgreenhouse.model.menu.MenuItemData;
 import com.nxp.example.smartgreenhouse.style.Images;
 import com.nxp.example.smartgreenhouse.view.HorizontalSwipeListener;
-import com.nxp.example.smartgreenhouse.view.Indicator;
 import ej.annotation.NonNullByDefault;
 import ej.microui.display.GraphicsContext;
 import ej.microui.display.Image;
@@ -21,6 +20,10 @@ public class MenuContainer extends Container {
         void onSwipeDown();
     }
 
+    public interface OnMenuItemClickListener {
+        void onMenuItemClicked(MenuItemData item);
+    }
+
     private static final int SWIPE_THRESHOLD = 35;
     private int touchStartX;
     private int touchStartY;
@@ -29,7 +32,6 @@ public class MenuContainer extends Container {
     private static final int CARD_ROWS = 2;
     private static final int CARD_GAP_X = 8;
     private static final int CARD_GAP_Y = 8;
-    private static final int INDICATOR_BOTTOM_GAP = 6;
 
     private final Image menuFrame;
     private final MenuHeader menuHeader;
@@ -38,12 +40,33 @@ public class MenuContainer extends Container {
 
     private onSwipeDownListener onSwipeDownListener;
     private HorizontalSwipeListener horizontalSwipeListener;
+    private OnMenuItemClickListener menuItemClickListener;
 
     public MenuContainer() {
         setEnabled(true);
         this.menuFrame = Image.getImage(Images.MENU_FRAME);
         this.menuHeader = new MenuHeader();
         this.menuFooter = new MenuFooter();
+
+        int maxVisible = CARD_COLUMNS * CARD_ROWS;
+        this.cards = new MenuCard[maxVisible];;
+
+        for (int i = 0; i < maxVisible; i++) {
+            this.cards[i] = new MenuCard();
+
+            this.cards[i].setOnCardClickListener(
+                    new MenuCard.OnCardClickListener() {
+                        @Override
+                        public void onCardClicked(MenuItemData item) {
+                            if (menuItemClickListener != null) {
+                                menuItemClickListener.onMenuItemClicked(item);
+                            }
+                        }
+                    }
+            );
+
+            addChild(this.cards[i]);
+        }
     }
 
     public int getMenuWidth() {
@@ -57,23 +80,18 @@ public class MenuContainer extends Container {
         this.horizontalSwipeListener = listener;
     }
 
+    public void setOnMenuItemClickListener(OnMenuItemClickListener listener) {
+        this.menuItemClickListener = listener;
+    }
+
     public void setItems(MenuItemData[] items) {
-        while (getChildrenCount() > 0) {
-            Widget child = getChild(0);
-            removeChild(child);
+        int itemCount = items == null ? 0 : items.length;
+
+        for (int i = 0; i < this.cards.length; i++) {
+            MenuItemData item = i < itemCount ? items[i] : null;
+            this.cards[i].setDisplayItem(item);
         }
 
-        int maxVisible = CARD_COLUMNS * CARD_ROWS;
-        int count = Math.min(items.length, maxVisible);
-
-        this.cards = new MenuCard[count];
-        for (int i = 0; i < count; i++) {
-            this.cards[i] = new MenuCard();
-            this.cards[i].setDisplayItem(items[i]);
-            addChild(this.cards[i]);
-        }
-
-        requestLayOut();
         requestRender();
     }
 
@@ -89,6 +107,10 @@ public class MenuContainer extends Container {
 
     @Override
     protected void layOutChildren(int contentWidth, int contentHeight) {
+        if (this.cards == null || this.cards.length == 0) {
+            return;
+        }
+
         int cardWidth = this.cards[0].getCardWidth();
         int cardHeight = this.cards[0].getCardHeight();
 
@@ -143,15 +165,15 @@ public class MenuContainer extends Container {
             return super.handleEvent(event);
         }
 
+        Pointer pointer = (Pointer) Event.getGenerator(event);
+
         if (Buttons.isPressed(event)) {
-            Pointer pointer = (Pointer) Event.getGenerator(event);
             this.touchStartX = pointer.getX();
             this.touchStartY = pointer.getY();
-            return true;
+            return false;
         }
 
         if (Buttons.isReleased(event)) {
-            Pointer pointer = (Pointer) Event.getGenerator(event);
             int deltaY = pointer.getY() - this.touchStartY;
             int deltaX = pointer.getX() - this.touchStartX;
 
@@ -170,8 +192,10 @@ public class MenuContainer extends Container {
                 }
                 return true;
             }
+
+            return false;
         }
 
-        return super.handleEvent(event);
+        return false;
     };
 }

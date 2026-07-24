@@ -8,6 +8,7 @@ import com.nxp.example.smartgreenhouse.view.MainPage;
 import com.nxp.example.smartgreenhouse.view.overview.HeaderOverview;
 import ej.bon.Timer;
 import ej.bon.TimerTask;
+import ej.microui.MicroUI;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -32,28 +33,40 @@ public class HeaderController implements HeaderOverview.onWifiClickListener {
 
     @Override
     public void onClicked() {
-        boolean wifiMenuOpen = this.mainPage.getWifiOpen();
-        this.mainPage.setWifiOpen(!wifiMenuOpen);
-
-        if (!wifiMenuOpen) {
-            LOGGER.log(Level.INFO, "WiFi menu opened, scanning...");
-            WifiNetwork[] networks = SampleWifiData.createSampleWifiData();
-            this.mainPage.updateWifiNetworks(networks);
-        } else {
+        if (this.mainPage.isWifiOpen()) {
+            this.mainPage.closeWifi();
             LOGGER.log(Level.INFO, "WiFi menu closed");
+            return;
         }
+
+        this.mainPage.openWifi();
+
+        LOGGER.log(Level.INFO, "WiFi menu opened, scanning...");
+
+        WifiNetwork[] networks = SampleWifiData.createSampleWifiData();
+        this.mainPage.updateWifiNetworks(networks);
     }
 
     private void startClock() {
-        if (this.clockTimer == null) {
-            this.clockTimer = new Timer();
-            this.clockTimer.schedule(new TimerTask() {
-                @Override
-                public void run() {
-                    String time = Time.formatTime(ZonedDateTime.now(ZoneId.of("+07:00")));
-                    mainPage.updateTime(time);
-                }
-            }, 0, 1000);
+        if (this.clockTimer != null) {
+            return;
         }
+
+        this.clockTimer = new Timer();
+        this.clockTimer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                final String currentTime = Time.formatTime(
+                        ZonedDateTime.now(ZoneId.of("+07:00"))
+                );
+
+                MicroUI.callSerially(new Runnable() {
+                    @Override
+                    public void run() {
+                        mainPage.updateTime(currentTime);
+                    }
+                });
+            }
+        }, 0, 1000);
     }
 }

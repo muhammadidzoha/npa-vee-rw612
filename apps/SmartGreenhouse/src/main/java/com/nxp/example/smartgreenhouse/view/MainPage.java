@@ -76,13 +76,16 @@ public class MainPage extends Container {
         this.menuContainer.setOnSwipeListener(listener);
     }
 
+    public void setOnMenuItemClickListener(MenuContainer.OnMenuItemClickListener listener) {
+        this.menuContainer.setOnMenuItemClickListener(listener);
+    }
+
     public void updateWifiNetworks(WifiNetwork[] networks) {
         this.wifiContainer.setNetworks(networks);
     }
 
     public void updateTime(String time) {
         this.headerOverview.setTime(time);
-        this.headerOverview.requestRender();
     }
 
     public void updateTrayLabel(String text) {
@@ -111,17 +114,29 @@ public class MainPage extends Container {
         this.menuContainer.setIndicator(total, selected);
     }
 
-    public boolean getWifiOpen() {
+    public boolean isWifiOpen() {
         return this.wifiOpen;
     }
 
-    public void setWifiOpen(boolean wifiOpen) {
-        this.wifiOpen = wifiOpen;
+    public void openMenu() {
+        this.wifiOpen = false;
+        this.menuOpen = true;
         requestLayOut();
     }
 
-    public void setMenuOpen(boolean menuOpen) {
-        this.menuOpen = menuOpen;
+    public void closeMenu() {
+        this.menuOpen = false;
+        requestLayOut();
+    }
+
+    public void openWifi() {
+        this.menuOpen = false;
+        this.wifiOpen = true;
+        requestLayOut();
+    }
+
+    public void closeWifi() {
+        this.wifiOpen = false;
         requestLayOut();
     }
 
@@ -173,8 +188,8 @@ public class MainPage extends Container {
         }
 
         if (this.menuContainer != null) {
-            int menuWidth = this.menuContainer.getWidth();
-            int menuHeight = this.menuContainer.getHeight();
+            int menuWidth = this.menuContainer.getMenuWidth();
+            int menuHeight = this.menuContainer.getMenuHeight();
             int menuX = (contentWidth - menuWidth) / 2;
             int menuOpenY = contentHeight - menuHeight;
             int menuY = this.menuOpen ? menuOpenY : contentHeight;

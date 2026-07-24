@@ -1,6 +1,8 @@
 package com.nxp.example.smartgreenhouse.controller;
 
 import com.nxp.example.smartgreenhouse.model.sensor.*;
+import com.nxp.example.smartgreenhouse.state.AppState;
+import com.nxp.example.smartgreenhouse.model.sensor.SensorDataStore;
 import com.nxp.example.smartgreenhouse.view.MainPage;
 import com.nxp.example.smartgreenhouse.view.HorizontalSwipeListener;
 import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
@@ -8,19 +10,22 @@ import com.nxp.example.smartgreenhouse.view.overview.FooterOverview;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Logger;
 
 public class OverviewController implements HorizontalSwipeListener, FooterOverview.onSwipeUpListener, MenuContainer.onSwipeDownListener {
 
-    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: OverviewController]");
-
     private final MainPage mainPage;
-    private SensorData[] sensorNodes;
+    private final AppState appState;
+    private final SensorDataStore sensorDataStore;
+
+    private final SensorDefinition[] sensorDefinitions;
 
     private int currentIndex;
 
-    public OverviewController(MainPage mainPage) {
+    public OverviewController(MainPage mainPage, AppState appState, SensorDataStore sensorDataStore) {
         this.mainPage = mainPage;
+        this.appState = appState;
+        this.sensorDataStore = sensorDataStore;
+        this.sensorDefinitions = SensorDefinitionProvider.getAll();
     }
 
     public void init() {
@@ -30,21 +35,41 @@ public class OverviewController implements HorizontalSwipeListener, FooterOvervi
     }
 
     public void setSensorNodes(SensorData[] nodes) {
-        this.sensorNodes = nodes;
-        this.currentIndex = 0;
+        int selectedNodeId = getCurrentNodeId();
 
-        if (nodes.length > 0) {
-            updateDisplay();
+        this.sensorDataStore.replaceAll(nodes);
+
+        if (this.sensorDataStore.getNodeCount() == 0) {
+            clearSensorDisplay();
+            return;
         }
 
+        if (selectedNodeId >= 0) {
+            int selectedIndex = this.sensorDataStore.findNodeIndexById(selectedNodeId);
+            this.currentIndex = Math.max(selectedIndex, 0);
+        } else {
+            this.currentIndex = 0;
+        }
+
+        updateDisplay();
+    }
+
+    private void clearSensorDisplay() {
+        this.currentIndex = 0;
+
+        this.mainPage.updateTrayLabel("MENUNGGU DATA");
+        this.mainPage.updateSensorCards(null);
+        this.mainPage.updateTotalIndicator(0);
+        this.mainPage.updateSelectedIndicator(0);
     }
 
     @Override
     public void onSwipeLeft() {
-        if (this.sensorNodes == null) return;
+        int nodeCount = this.sensorDataStore.getNodeCount();
 
         int nextIndex = this.currentIndex + 1;
-        if (nextIndex < this.sensorNodes.length) {
+
+        if (nextIndex < nodeCount) {
             this.currentIndex = nextIndex;
             updateDisplay();
         }
@@ -52,41 +77,61 @@ public class OverviewController implements HorizontalSwipeListener, FooterOvervi
 
     @Override
     public void onSwipeRight() {
-        if (this.sensorNodes == null) return;
+        int previousIndex = this.currentIndex - 1;
 
-        int prevIndex = this.currentIndex - 1;
-        if (prevIndex >= 0) {
-            this.currentIndex = prevIndex;
+        if (previousIndex >= 0) {
+            this.currentIndex = previousIndex;
             updateDisplay();
         }
     }
 
     @Override
     public void onSwipeUp() {
-        this.mainPage.setMenuOpen(true);
+        this.mainPage.openMenu();
     }
 
     @Override
     public void onSwipeDown() {
-        this.mainPage.setMenuOpen(false);
+        this.mainPage.closeMenu();
     }
 
     private void updateDisplay() {
-        String text = "TRAY " + (this.currentIndex + 1);
-        mainPage.updateTrayLabel(text);
-        updateSensorData(this.sensorNodes[this.currentIndex]);
-        mainPage.updateTotalIndicator(this.sensorNodes.length);
-        mainPage.updateSelectedIndicator(this.currentIndex);
+        int nodeCount =
+                this.sensorDataStore.getNodeCount();
+
+        if (nodeCount == 0) {
+            clearSensorDisplay();
+            return;
+        }
+
+        if (this.currentIndex < 0) {
+            this.currentIndex = 0;
+        } else if (this.currentIndex >= nodeCount) {
+            this.currentIndex = nodeCount - 1;
+        }
+
+        SensorData currentData = this.sensorDataStore.getNodeAt(this.currentIndex);
+
+        if (currentData == null) {
+            clearSensorDisplay();
+            return;
+        }
+
+        this.appState.setSelectedNodeId(currentData.getNodeId());
+
+        String trayText = "TRAY " + currentData.getNodeId();
+        this.mainPage.updateTrayLabel(trayText);
+        updateSensorData(currentData);
+        this.mainPage.updateTotalIndicator(nodeCount);
+        this.mainPage.updateSelectedIndicator(this.currentIndex);
     }
 
     public void updateSensorData(SensorData data) {
-        SensorDefinition[] definitions = SensorDefinitionProvider.getAll();
         List<SensorDisplayItem> items = new ArrayList<>();
 
-        for (SensorDefinition def : definitions) {
+        for (SensorDefinition def : this.sensorDefinitions) {
             if (def.isVisible()) {
-                SensorDisplayItem item = SensorDisplayBuilder.build(def, data);
-                items.add(item);
+                items.add(SensorDisplayBuilder.build(def, data));
             }
         }
 
@@ -94,5 +139,15 @@ public class OverviewController implements HorizontalSwipeListener, FooterOvervi
         items.toArray(result);
 
         mainPage.updateSensorCards(result);
+    }
+
+    private int getCurrentNodeId() {
+        SensorData currentData = this.sensorDataStore.getNodeAt(this.currentIndex);
+
+        if (currentData == null) {
+            return -1;
+        }
+
+        return currentData.getNodeId();
     }
 }

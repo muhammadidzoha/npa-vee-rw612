@@ -1,8 +1,8 @@
 package com.nxp.example.smartgreenhouse.model.sensor;
 
 public class SensorData {
-    private int nodeId;
-    private int targetId;
+    private final int nodeId;
+    private final int targetId;
     private float n;
     private float p;
     private float k;
