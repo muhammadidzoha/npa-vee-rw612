@@ -37,6 +37,10 @@ public class MainPage extends Container {
     public MainPage() {
         setEnabled(true);
 
+        this.menuOpen = false;
+        this.wifiOpen = false;
+        this.sensorDetailOpen = false;
+
         this.headerOverview = new HeaderOverview();
         this.trayLabel = new TrayLabel();
         this.overview = new Overview();
@@ -46,6 +50,7 @@ public class MainPage extends Container {
         this.menuContainer = new MenuContainer();
 
         this.sensorDetail = new SensorDetail();
+        this.sensorDetail.setEnabled(false);
 
         addChild(overview);
         addChild(headerOverview);
@@ -59,27 +64,19 @@ public class MainPage extends Container {
     }
 
     public void setOnWifiClick(HeaderOverview.onWifiClickListener onWifiClick) {
-        if (this.headerOverview != null) {
-            this.headerOverview.setOnWifiClickListener(onWifiClick);
-        }
+        this.headerOverview.setOnWifiClickListener(onWifiClick);
     }
 
     public void setOnOverviewSwipeListener(HorizontalSwipeListener horizontalSwipeListener) {
-        if (this.overview != null) {
-            this.overview.setOnSwipeListener(horizontalSwipeListener);
-        }
+        this.overview.setOnSwipeListener(horizontalSwipeListener);
     }
 
     public void setOnFooterSwipeListener(FooterOverview.onSwipeUpListener onSwipeUpListener) {
-        if (this.footerOverview != null) {
-            this.footerOverview.setOnSwipeUpListener(onSwipeUpListener);
-        }
+        this.footerOverview.setOnSwipeUpListener(onSwipeUpListener);
     }
 
     public void setOnMenuContainerSwipeListener(MenuContainer.onSwipeDownListener onSwipeDownListener) {
-        if (this.menuContainer != null) {
-            this.menuContainer.setOnSwipeDownListener(onSwipeDownListener);
-        }
+        this.menuContainer.setOnSwipeDownListener(onSwipeDownListener);
     }
 
     public void setOnMenuSwipeListener(HorizontalSwipeListener listener) {
@@ -92,6 +89,10 @@ public class MainPage extends Container {
 
     public void setOnSensorDetailBackListener(SensorDetail.onBackListener listener) {
         this.sensorDetail.setOnBackListener(listener);
+    }
+
+    public void setOnSensorDetailSwipeListener(HorizontalSwipeListener listener) {
+        this.sensorDetail.setOnSwipeListener(listener);
     }
 
     public void updateWifiNetworks(WifiNetwork[] networks) {
@@ -115,9 +116,7 @@ public class MainPage extends Container {
     }
 
     public void updateSensorCards(SensorDisplayItem[] items) {
-        if (this.overview != null) {
-            this.overview.setItems(items);
-        }
+        this.overview.setItems(items);
     }
 
     public void updateMenuItems(MenuItemData[] items) {
@@ -132,9 +131,19 @@ public class MainPage extends Container {
         this.sensorDetail.setDetailTitle(text);
     }
 
-    public void updateSensorDetail(String title, SensorDisplayItem item, double minValue, double maxValue, ChartPoint[] historyPoints, SensorHistorySummary historySummary, SensorThreshold sensorThreshold) {
+    public void updateSensorDetail(
+            String title,
+            SensorDisplayItem item,
+            double minValue,
+            double maxValue,
+            ChartPoint[] historyPoints,
+            SensorHistorySummary historySummary,
+            SensorThreshold sensorThreshold,
+            int indicatorTotal,
+            int indicatorSelectedIndex
+    ) {
         this.sensorDetail.setDetailTitle(title);
-        this.sensorDetail.setSensorItem(item, minValue, maxValue, historyPoints, historySummary, sensorThreshold);
+        this.sensorDetail.setSensorItem(item, minValue, maxValue, historyPoints, historySummary, sensorThreshold, indicatorTotal, indicatorSelectedIndex);
     }
 
     public void clearSensorDetail() {
@@ -217,14 +226,12 @@ public class MainPage extends Container {
         int trayY = headerHeight + gapHeaderToTray;
         layOutChild(this.trayLabel, 0, trayY, contentWidth, trayLabelHeight);
 
-        if (this.overview != null) {
-            int overviewWidth = 465;
-            int overviewHeight = 202;
-            int overviewX = (contentWidth - overviewWidth) / 2;
-            int overviewY = headerHeight + ((mainContentHeight - overviewHeight) / 2) - 1;
+        int overviewWidth = 465;
+        int overviewHeight = 202;
+        int overviewX = (contentWidth - overviewWidth) / 2;
+        int overviewY = headerHeight + ((mainContentHeight - overviewHeight) / 2) - 1;
 
-            layOutChild(this.overview, overviewX, overviewY, overviewWidth, overviewHeight);
-        }
+        layOutChild(this.overview, overviewX, overviewY, overviewWidth, overviewHeight);
 
         int footerY = contentHeight - footerHeight;
         int indicatorHeight = this.indicator.getIndicatorHeight();
@@ -234,23 +241,19 @@ public class MainPage extends Container {
 
         layOutChild(this.footerOverview, 0, footerY, contentWidth, footerHeight);
 
-        if (this.wifiContainer != null) {
-            int wifiWidth = this.wifiContainer.getWidth();
-            int wifiHeight = this.wifiContainer.getHeight();
-            int marginWifiFrame = 16;
-            int wifiX = contentWidth - wifiWidth - marginWifiFrame;
-            int wifiY = this.wifiOpen ? headerHeight : contentHeight;
-            layOutChild(this.wifiContainer, wifiX, wifiY, wifiWidth, wifiHeight);
-        }
+        int wifiWidth = this.wifiContainer.getWidth();
+        int wifiHeight = this.wifiContainer.getHeight();
+        int marginWifiFrame = 16;
+        int wifiX = contentWidth - wifiWidth - marginWifiFrame;
+        int wifiY = this.wifiOpen ? headerHeight : contentHeight;
+        layOutChild(this.wifiContainer, wifiX, wifiY, wifiWidth, wifiHeight);
 
-        if (this.menuContainer != null) {
-            int menuWidth = this.menuContainer.getMenuWidth();
-            int menuHeight = this.menuContainer.getMenuHeight();
-            int menuX = (contentWidth - menuWidth) / 2;
-            int menuOpenY = contentHeight - menuHeight;
-            int menuY = this.menuOpen ? menuOpenY : contentHeight;
-            layOutChild(this.menuContainer, menuX, menuY, menuWidth, menuHeight);
-        }
+        int menuWidth = this.menuContainer.getMenuWidth();
+        int menuHeight = this.menuContainer.getMenuHeight();
+        int menuX = (contentWidth - menuWidth) / 2;
+        int menuOpenY = contentHeight - menuHeight;
+        int menuY = this.menuOpen ? menuOpenY : contentHeight;
+        layOutChild(this.menuContainer, menuX, menuY, menuWidth, menuHeight);
 
         int sensorDetailY = this.sensorDetailOpen ? 0 : contentHeight;
 

@@ -11,9 +11,6 @@ import ej.microui.display.Font;
 import ej.microui.display.GraphicsContext;
 import ej.microui.display.Image;
 import ej.microui.display.Painter;
-import ej.microui.event.Event;
-import ej.microui.event.generator.Buttons;
-import ej.microui.event.generator.Pointer;
 import ej.mwt.Widget;
 import ej.mwt.util.Alignment;
 import ej.mwt.util.Rectangle;
@@ -148,32 +145,12 @@ public class LineChart extends Widget {
         size.setSize(getChartWidth(), getChartHeight());
     }
 
-    @Override
-    public boolean handleEvent(int event) {
-        int type = Event.getType(event);
-
-        if (type == Pointer.EVENT_TYPE) {
-            int action = Buttons.getAction(event);
-
-            if (action == Buttons.RELEASED || action == Pointer.DRAGGED) {
-                Pointer pointer = (Pointer) Event.getGenerator(event);
-                Rectangle bounds = getContentBounds();
-                int localX = pointer.getX() - getAbsoluteX() - bounds.getX();
-
-                selectPointAtLocalX(localX);
-                return true;
-            }
-        }
-
-        return super.handleEvent(event);
-    }
-
     public boolean selectPointAtLocalX(int localX) {
         if (this.points == null || this.points.length == 0) {
             return false;
         }
 
-        Font font = Fonts.jetbrainsMonoRegular12px();
+        Font font = Fonts.jetbrainsMonoRegular10px();
 
         int chartWidth = getChartWidth() - (CONTENT_MARGIN * 2);
         float topValue = getTopScaleValue();

@@ -8,6 +8,7 @@ import com.nxp.example.smartgreenhouse.style.Fonts;
 import com.nxp.example.smartgreenhouse.style.Icons;
 import com.nxp.example.smartgreenhouse.style.Images;
 import com.nxp.example.smartgreenhouse.utils.SensorValueFormatter;
+import com.nxp.example.smartgreenhouse.view.HorizontalSwipeListener;
 import com.nxp.example.smartgreenhouse.view.gauge.GaugeWidget;
 import com.nxp.example.smartgreenhouse.view.linechart.ChartPoint;
 import com.nxp.example.smartgreenhouse.view.linechart.LineChart;
@@ -17,7 +18,11 @@ import ej.microui.display.Font;
 import ej.microui.display.GraphicsContext;
 import ej.microui.display.Image;
 import ej.microui.display.Painter;
+import ej.microui.event.Event;
+import ej.microui.event.generator.Buttons;
+import ej.microui.event.generator.Pointer;
 import ej.mwt.Container;
+import ej.mwt.util.Rectangle;
 import ej.mwt.util.Size;
 import ej.widget.basic.ImageButton;
 import ej.widget.basic.OnClickListener;
@@ -38,6 +43,8 @@ public class SensorDetail extends Container {
     private final Image historyCardFrame;
     private final Image historyUpdateCardFrame;
     private final Image optimalFrame;
+    private final Image dotActive;
+    private final Image dotInactive;
 
     private final ImageButton backButton;
     private final GaugeWidget gauge;
@@ -48,6 +55,20 @@ public class SensorDetail extends Container {
     private SensorThreshold sensorThreshold;
 
     private onBackListener onBackListener;
+    private HorizontalSwipeListener onSwipeListener;
+
+    private static final int TAP_THRESHOLD = 8;
+    private static final int SWIPE_THRESHOLD = 35;
+
+    private int pointerStartX;
+    private int pointerStartY;
+
+    private boolean pointerPressed;
+    private boolean pointerStartedInsideChart;
+    private boolean pointerStartedInsideBackButton;
+
+    private int indicatorTotal;
+    private int indicatorSelectedIndex;
 
     private String detailTitle;
 
@@ -114,6 +135,9 @@ public class SensorDetail extends Container {
     private static final int OPTIMAL_RANGE_SEPARATOR_GAP = 4;
     private static final int OPTIMAL_VALUE_RIGHT_OFFSET = 5;
 
+    private static final int OPTIMAL_TO_DOT_GAP = 3;
+    private static final int DOT_INDICATOR_GAP = 3;
+
     public SensorDetail() {
         setEnabled(true);
 
@@ -121,10 +145,22 @@ public class SensorDetail extends Container {
         this.historyCardFrame = Image.getImage(Images.HISTORY_CARD_FRAME);
         this.historyUpdateCardFrame = Image.getImage(Images.HISTORY_UPDATE_CARD_FRAME);
         this.optimalFrame = Image.getImage(Images.OPTIMAL_FRAME);
+        this.dotActive = Image.getImage(Images.DOT_ACTIVE);
+        this.dotInactive = Image.getImage(Images.DOT_INACTIVE);
+
+        this.indicatorTotal = 0;
+        this.indicatorSelectedIndex = 0;
 
         this.backButton = new ImageButton(Icons.BACK_ICON_24);
         this.gauge = new GaugeWidget();
         this.lineChart = new LineChart("", new ChartPoint[0], true);
+        this.lineChart.setEnabled(false);
+
+        this.pointerStartX = 0;
+        this.pointerStartY = 0;
+        this.pointerPressed = false;
+        this.pointerStartedInsideChart = false;
+        this.pointerStartedInsideBackButton = false;
 
         this.selectedSensorItem = null;
         this.historySummary = SensorHistorySummary.empty();
@@ -167,6 +203,10 @@ public class SensorDetail extends Container {
         this.onBackListener = listener;
     }
 
+    public void setOnSwipeListener(HorizontalSwipeListener listener) {
+        this.onSwipeListener = listener;
+    }
+
     public void setDetailTitle(String detailTitle) {
         if (detailTitle == null) {
             this.detailTitle = "";
@@ -177,14 +217,27 @@ public class SensorDetail extends Container {
         requestRender();
     }
 
-    public void setSensorItem(SensorDisplayItem item, double minValue, double maxValue, ChartPoint[] historyPoints, SensorHistorySummary historySummary, SensorThreshold sensorThreshold) {
+    public void setSensorItem(
+            SensorDisplayItem item,
+            double minValue,
+            double maxValue,
+            ChartPoint[] historyPoints,
+            SensorHistorySummary historySummary,
+            SensorThreshold sensorThreshold,
+            int indicatorTotal,
+            int indicatorSelectedIndex
+    ) {
         if (item == null) {
             clearSensorItem();
             return;
         }
 
+        boolean needsLayout = this.selectedSensorItem == null;
+
         this.selectedSensorItem = item;
         this.sensorThreshold = sensorThreshold;
+
+        setIndicatorState(indicatorTotal, indicatorSelectedIndex);
 
         if (historySummary == null) {
             this.historySummary = SensorHistorySummary.empty();
@@ -204,14 +257,38 @@ public class SensorDetail extends Container {
             this.lineChart.setPoints(historyPoints);
         }
 
-        requestLayOut();
+        if (needsLayout) {
+            requestLayOut();
+        }
+
         requestRender();
+    }
+
+    private void setIndicatorState(int total, int selectedIndex) {
+        if (total <= 1) {
+            this.indicatorTotal = 0;
+            this.indicatorSelectedIndex = 0;
+            return;
+        }
+
+        if (selectedIndex < 0) {
+            selectedIndex = 0;
+        }
+
+        if (selectedIndex >= total) {
+            selectedIndex = total - 1;
+        }
+
+        this.indicatorTotal = total;
+        this.indicatorSelectedIndex = selectedIndex;
     }
 
     public void clearSensorItem() {
         this.selectedSensorItem = null;
         this.historySummary = SensorHistorySummary.empty();
         this.sensorThreshold = null;
+        this.indicatorTotal = 0;
+        this.indicatorSelectedIndex = 0;
 
         this.gauge.clearData();
 
@@ -241,6 +318,124 @@ public class SensorDetail extends Container {
 
     private int getOptimalFrameY() {
         return getSummaryCardsY() + HISTORY_CARD_HEIGHT + SUMMARY_TO_OPTIMAL_GAP;
+    }
+
+    private int getTrayIndicatorY() {
+        return getOptimalFrameY() + this.optimalFrame.getHeight() + OPTIMAL_TO_DOT_GAP;
+    }
+
+    @Override
+    public boolean handleEvent(int event) {
+        if (Event.getType(event) != Pointer.EVENT_TYPE) {
+            return super.handleEvent(event);
+        }
+
+        int action = Buttons.getAction(event);
+
+        Pointer pointer = (Pointer) Event.getGenerator(event);
+
+        Rectangle contentBounds = getContentBounds();
+
+        int localX = pointer.getX() - getAbsoluteX() - contentBounds.getX();
+        int localY = pointer.getY() - getAbsoluteY() - contentBounds.getY();
+
+        if (action == Buttons.PRESSED) {
+            if (isInsideBackButton(localX, localY)) {
+                this.pointerPressed = false;
+                this.pointerStartedInsideChart = false;
+                this.pointerStartedInsideBackButton = true;
+
+                return super.handleEvent(event);
+            }
+
+            this.pointerStartedInsideBackButton = false;
+            this.pointerStartX = localX;
+            this.pointerStartY = localY;
+            this.pointerPressed = true;
+            this.pointerStartedInsideChart = isInsideLineChart(localX, localY);
+
+            return true;
+        }
+
+        if (this.pointerStartedInsideBackButton) {
+            boolean handled = super.handleEvent(event);
+            if (action == Buttons.RELEASED) {
+                this.pointerStartedInsideBackButton = false;
+            }
+
+            return handled;
+        }
+
+        if (action == Pointer.DRAGGED) {
+            return this.pointerPressed;
+        }
+
+        if (action != Buttons.RELEASED || !this.pointerPressed) {
+            return super.handleEvent(event);
+        }
+
+        this.pointerPressed = false;
+
+        int deltaX = localX - this.pointerStartX;
+        int deltaY = localY - this.pointerStartY;
+
+        int absoluteDeltaX = absolute(deltaX);
+        int absoluteDeltaY = absolute(deltaY);
+
+        if (absoluteDeltaX >= SWIPE_THRESHOLD && absoluteDeltaX > absoluteDeltaY) {
+            if (this.onSwipeListener != null) {
+                if (deltaX < 0) {
+                    this.onSwipeListener.onSwipeLeft();
+                } else {
+                    this.onSwipeListener.onSwipeRight();
+                }
+            }
+
+            this.pointerStartedInsideChart = false;
+
+            return true;
+        }
+
+        boolean isTap = absoluteDeltaX <= TAP_THRESHOLD && absoluteDeltaY <= TAP_THRESHOLD;
+        if (isTap && this.pointerStartedInsideChart && isInsideLineChart(localX, localY)) {
+            selectChartPoint(localX);
+        }
+
+        this.pointerStartedInsideChart = false;
+
+        return true;
+    }
+
+    private boolean isInsideBackButton(int localX, int localY) {
+        int backButtonLeft = PADDING_LEFT_ICON;
+        int backButtonTop = PADDING_TOP_ICON;
+        int backButtonRight = backButtonLeft + BACK_ICON_SIZE;
+        int backButtonBottom = backButtonTop + BACK_ICON_SIZE;
+
+        return localX >= backButtonLeft && localX < backButtonRight && localY >= backButtonTop && localY < backButtonBottom;
+    }
+
+    private boolean isInsideLineChart(int localX, int localY) {
+        if (this.selectedSensorItem == null) {
+            return false;
+        }
+
+        int chartX = getLineChartX();
+        int chartY = getLineChartY();
+
+        int chartRight = chartX + this.lineChart.getChartWidth();
+        int chartBottom = chartY + this.lineChart.getChartHeight();
+
+        return localX >= chartX && localX < chartRight && localY >= chartY && localY < chartBottom;
+    }
+
+    private void selectChartPoint(int localX) {
+        int chartLocalX = localX - getLineChartX();
+        this.lineChart.selectPointAtLocalX(chartLocalX);
+    }
+
+    private int absolute(int value) {
+        return value < 0 ? -value : value;
     }
 
     @Override
@@ -280,6 +475,7 @@ public class SensorDetail extends Container {
         if (this.selectedSensorItem != null) {
             drawHistorySummaryCards(g);
             drawOptimalRangeFrame(g);
+            drawIndicator(g, contentWidth);
         }
 
         super.renderContent(g, contentWidth, contentHeight);
@@ -432,6 +628,49 @@ public class SensorDetail extends Container {
 
         currentRightX -= minValueWidth;
         Painter.drawString(g, minValue, this.optimalValueFont, currentRightX, valueY);
+    }
+
+    private void drawIndicator(GraphicsContext g, int contentWidth) {
+        if (this.indicatorTotal <= 1) {
+            return;
+        }
+
+        int totalWidth = 0;
+
+        for (int i = 0; i < this.indicatorTotal; i++) {
+            Image dotImage;
+
+            if (i == this.indicatorSelectedIndex) {
+                dotImage = this.dotActive;
+            } else {
+                dotImage = this.dotInactive;
+            }
+
+            totalWidth += dotImage.getWidth();
+
+            if (i < this.indicatorTotal - 1) {
+                totalWidth += DOT_INDICATOR_GAP;
+            }
+        }
+
+        int currentX = (contentWidth - totalWidth) / 2;
+        int indicatorY = getTrayIndicatorY();
+        int activeHeight = this.dotActive.getHeight();
+        int inactiveHeight = this.dotInactive.getHeight();
+        int maximumDotHeight = Math.max(activeHeight, inactiveHeight);
+
+        for (int i = 0; i < this.indicatorTotal; i++) {
+            Image dotImage;
+            if (i == this.indicatorSelectedIndex) {
+                dotImage = this.dotActive;
+            } else {
+                dotImage = this.dotInactive;
+            }
+
+            int dotY = indicatorY + ((maximumDotHeight - dotImage.getHeight()) / 2);
+            Painter.drawImage(g, dotImage, currentX, dotY);
+            currentX += dotImage.getWidth() + DOT_INDICATOR_GAP;
+        }
     }
 
     private Font getUpdateValueFont(String value) {

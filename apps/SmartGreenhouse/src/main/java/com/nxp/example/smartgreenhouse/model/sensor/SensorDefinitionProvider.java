@@ -58,7 +58,7 @@ public class SensorDefinitionProvider {
                     SensorId.SALINITAS_TANAH,
                     Image.getImage(Icons.SALINITAS_TANAH_ICON_32),
                     "SALINITAS TANAH",
-                    "μS/cm",
+                    "dS/m",
                     1,
                     false
             ),
