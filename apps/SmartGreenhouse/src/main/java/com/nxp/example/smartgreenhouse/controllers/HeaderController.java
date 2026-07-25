@@ -9,16 +9,12 @@ import ej.bon.Timer;
 import ej.bon.TimerTask;
 import ej.microui.MicroUI;
 
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class HeaderController implements HeaderOverview.onWifiClickListener {
 
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: HEADER CONTROLLER]");
-
-    private static final ZoneOffset WIB_OFFSET = ZoneOffset.ofHours(7);
 
     private final MainPage mainPage;
     private Timer clockTimer;
@@ -52,19 +48,22 @@ public class HeaderController implements HeaderOverview.onWifiClickListener {
         if (this.clockTimer != null) {
             return;
         }
-
         this.clockTimer = new Timer();
-        this.clockTimer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                final String currentTime = Time.formatTime(ZonedDateTime.now(WIB_OFFSET));
-                MicroUI.callSerially(new Runnable() {
+        this.clockTimer.schedule(
+                new TimerTask() {
                     @Override
                     public void run() {
-                        mainPage.updateTime(currentTime);
+                        final String currentTime = Time.formatCurrentTime();
+                        MicroUI.callSerially(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        HeaderController.this.mainPage.updateTime(currentTime);
+                                    }
+                                }
+                        );
                     }
-                });
-            }
-        }, 0, 1000);
+                }, 0, 1000
+        );
     }
 }
