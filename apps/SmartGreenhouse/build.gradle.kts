@@ -15,6 +15,7 @@ dependencies {
     implementation(libs.api.drawing)
     implementation(libs.api.device)
     implementation(libs.api.ecom.wifi)
+    implementation(libs.api.kf)
 
     implementation(libs.library.mwt)
     implementation(libs.library.widget)

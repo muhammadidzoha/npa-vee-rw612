@@ -1,6 +1,6 @@
 package com.nxp.example.smartgreenhouse.utils;
 
-import com.nxp.example.smartgreenhouse.model.wifi.WifiNetwork;
+import com.nxp.example.smartgreenhouse.models.wifi.WifiNetwork;
 import ej.ecom.wifi.AccessPoint;
 import ej.ecom.wifi.SecurityMode;
 import ej.ecom.wifi.WifiManager;

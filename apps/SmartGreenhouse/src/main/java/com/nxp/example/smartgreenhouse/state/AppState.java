@@ -1,6 +1,6 @@
 package com.nxp.example.smartgreenhouse.state;
 
-import com.nxp.example.smartgreenhouse.model.menu.MenuItemData;
+import com.nxp.example.smartgreenhouse.models.menu.MenuItemData;
 
 public final class AppState {
 

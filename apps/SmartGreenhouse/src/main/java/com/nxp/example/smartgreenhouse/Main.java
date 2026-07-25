@@ -1,7 +1,7 @@
 package com.nxp.example.smartgreenhouse;
 
 import com.microej.partial.support.PartialRenderPolicy;
-import com.nxp.example.smartgreenhouse.controller.AppController;
+import com.nxp.example.smartgreenhouse.controllers.AppController;
 import ej.annotation.NonNullByDefault;
 import ej.microui.MicroUI;
 import ej.mwt.Desktop;

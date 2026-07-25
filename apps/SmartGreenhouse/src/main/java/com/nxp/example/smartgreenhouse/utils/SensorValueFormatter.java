@@ -1,6 +1,6 @@
 package com.nxp.example.smartgreenhouse.utils;
 
-import com.nxp.example.smartgreenhouse.model.sensor.SensorDefinition;
+import com.nxp.example.smartgreenhouse.models.sensor.SensorDefinition;
 
 public final class SensorValueFormatter {
 
