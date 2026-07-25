@@ -21,7 +21,6 @@ dependencies {
     implementation(libs.library.widget)
     implementation(libs.library.basictool)
     implementation(libs.library.logging)
-    implementation(libs.library.time)
 
     microejVee(project(":vee-port"))
 }

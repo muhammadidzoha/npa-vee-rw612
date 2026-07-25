@@ -1,32 +1,23 @@
 package com.nxp.example.smartgreenhouse.utils;
 
-import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-
 public final class Time {
-    private static final ZoneOffset WIB_OFFSET = ZoneOffset.ofHours(7);
 
-    private static final String EMPTY_TIME = "--:--";
+    private static final long MILLIS_PER_SECOND = 1000L;
+    private static final long SECONDS_PER_MINUTE = 60L;
+    private static final long MINUTES_PER_HOUR = 60L;
+    private static final long HOURS_PER_DAY = 24L;
+
+    private static final long WIB_OFFSET_MILLIS = 7L * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLIS_PER_SECOND;
 
     private Time() {}
 
-    public static OffsetDateTime nowWib() {
-        return Instant.now().atOffset(WIB_OFFSET);
-    }
-
     public static String formatCurrentTime() {
-        return formatTime(nowWib());
-    }
+        long utcMillis = System.currentTimeMillis();
+        long wibMillis = utcMillis + WIB_OFFSET_MILLIS;
 
-    public static String formatTime(OffsetDateTime dateTime) {
-        if (dateTime == null) {
-            return EMPTY_TIME;
-        }
-
-        int hour = dateTime.getHour();
-        int minute = dateTime.getMinute();
-
+        long totalMinutes = wibMillis / MILLIS_PER_SECOND / SECONDS_PER_MINUTE;
+        int minute = (int) (totalMinutes % MINUTES_PER_HOUR);
+        int hour = (int) ((totalMinutes / MINUTES_PER_HOUR) % HOURS_PER_DAY);
         return twoDigits(hour) + ":" + twoDigits(minute);
     }
 
