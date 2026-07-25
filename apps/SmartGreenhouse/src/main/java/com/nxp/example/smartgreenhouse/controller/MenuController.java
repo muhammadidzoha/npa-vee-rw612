@@ -20,15 +20,17 @@ public class MenuController implements HorizontalSwipeListener, MenuContainer.On
 
     private final MainPage mainPage;
     private final AppState appState;
-    private final DetailController detailController;
+    private final SensorDetailController sensorDetailController;
+    private final ActuatorDetailController actuatorDetailController;
 
     private MenuItemData[] allItems;
     private int currentPage;
 
-    public MenuController(MainPage mainPage, AppState appState, DetailController detailController) {
+    public MenuController(MainPage mainPage, AppState appState, SensorDetailController sensorDetailController, ActuatorDetailController actuatorDetailController) {
         this.mainPage = mainPage;
         this.appState = appState;
-        this.detailController = detailController;
+        this.sensorDetailController = sensorDetailController;
+        this.actuatorDetailController = actuatorDetailController;
     }
 
     public void init() {
@@ -65,11 +67,12 @@ public class MenuController implements HorizontalSwipeListener, MenuContainer.On
         if (item.isSensor()) {
             LOGGER.log(Level.INFO, "Opening sensor detail: " + item.getTitle() + " | Node: " + this.appState.getSelectedNodeId() + " | Sensor ID: " + item.getSensorId());
 
-            this.detailController.openSelectedSensor();
+            this.sensorDetailController.openSelectedSensor();
             return;
         }
 
         LOGGER.log(Level.INFO, "Actuator detail is not implemented: " + item.getTitle() + " | Node: " + this.appState.getSelectedNodeId() + " | Actuator ID: " + item.getActuatorId());
+        this.actuatorDetailController.openSelectedActuator();
     }
 
     private void showPage(int pageIndex) {

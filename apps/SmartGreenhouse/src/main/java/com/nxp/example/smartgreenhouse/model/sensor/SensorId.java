@@ -1,6 +1,6 @@
 package com.nxp.example.smartgreenhouse.model.sensor;
 
-public class SensorId {
+public final class SensorId {
     private SensorId(){}
 
     public static final int NITROGEN = 0;

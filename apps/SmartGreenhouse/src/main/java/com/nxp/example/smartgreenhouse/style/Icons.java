@@ -34,4 +34,13 @@ public class Icons {
 
     public static final String BACK_ICON_24 = "/asset/icon/BackIcon24.png";
 
+    public static final String POMPA_AIR_ICON_64 = "/asset/icon/PompaAirIcon64.png";
+
+    public static final String KATUP_AIR_ICON_64 = "/asset/icon/KatupAirIcon64.png";
+
+    public static final String KALENDER_ICON_48 = "/asset/icon/KalenderIcon48.png";
+
+    public static final String SETTING_ICON_48 = "/asset/icon/SettingIcon48.png";
+
+    public static final String TIMER_ICON_32 = "/asset/icon/TimerIcon32.png";
 }

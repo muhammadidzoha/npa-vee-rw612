@@ -6,6 +6,9 @@ public class ApplicationColors {
     public static final int SECONDARY_COLOR = 0x16335C;
     public static final int THIRD_COLOR = 0xA8B7C8;
 
+    public static final int RED = 0xD74355;
+    public static final int GREEN = 0x18A68F;
+
     public static final int STATUS_OPTIMAL_COLOR = 0x18A68F;
     public static final int STATUS_WASPADA_COLOR = 0xB96D00;
     public static final int STATUS_BAHAYA_COLOR = 0xD74355;

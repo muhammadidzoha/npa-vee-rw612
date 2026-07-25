@@ -8,7 +8,7 @@ import com.nxp.example.smartgreenhouse.view.MainPage;
 import com.nxp.example.smartgreenhouse.view.detail.SensorDetail;
 import com.nxp.example.smartgreenhouse.view.linechart.ChartPoint;
 
-public class DetailController implements SensorDetail.onBackListener, HorizontalSwipeListener {
+public class SensorDetailController implements SensorDetail.onBackListener, HorizontalSwipeListener {
 
     private final MainPage mainPage;
     private final AppState appState;
@@ -18,7 +18,7 @@ public class DetailController implements SensorDetail.onBackListener, Horizontal
     private int currentNodeIndex;
     private int selectedSensorId;
 
-    public DetailController(MainPage mainPage, AppState appState, SensorDataStore sensorDataStore, SensorHistoryStore sensorHistoryStore) {
+    public SensorDetailController(MainPage mainPage, AppState appState, SensorDataStore sensorDataStore, SensorHistoryStore sensorHistoryStore) {
         this.mainPage = mainPage;
         this.appState = appState;
         this.sensorDataStore = sensorDataStore;

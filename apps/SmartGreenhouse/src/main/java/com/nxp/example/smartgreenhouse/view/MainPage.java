@@ -1,10 +1,13 @@
 package com.nxp.example.smartgreenhouse.view;
 
+import com.nxp.example.smartgreenhouse.model.actuator.ActuatorDisplayItem;
 import com.nxp.example.smartgreenhouse.model.menu.MenuItemData;
 import com.nxp.example.smartgreenhouse.model.sensor.SensorDisplayItem;
 import com.nxp.example.smartgreenhouse.model.sensor.SensorHistorySummary;
 import com.nxp.example.smartgreenhouse.model.sensor.SensorThreshold;
 import com.nxp.example.smartgreenhouse.model.wifi.WifiNetwork;
+import com.nxp.example.smartgreenhouse.view.actuator.ActuatorToggleListener;
+import com.nxp.example.smartgreenhouse.view.detail.ActuatorDetail;
 import com.nxp.example.smartgreenhouse.view.detail.SensorDetail;
 import com.nxp.example.smartgreenhouse.view.linechart.ChartPoint;
 import com.nxp.example.smartgreenhouse.view.menu.MenuContainer;
@@ -25,6 +28,7 @@ public class MainPage extends Container {
     private final WifiContainer wifiContainer;
     private final MenuContainer menuContainer;
     private final SensorDetail sensorDetail;
+    private final ActuatorDetail actuatorDetail;
 
     private final TrayLabel trayLabel;
     private final Indicator indicator;
@@ -32,6 +36,7 @@ public class MainPage extends Container {
     private boolean menuOpen;
     private boolean wifiOpen;
     private boolean sensorDetailOpen;
+    private boolean actuatorDetailOpen;
 
 
     public MainPage() {
@@ -52,6 +57,10 @@ public class MainPage extends Container {
         this.sensorDetail = new SensorDetail();
         this.sensorDetail.setEnabled(false);
 
+        this.actuatorDetail = new ActuatorDetail();
+        this.actuatorDetail.setEnabled(false);
+        this.actuatorDetailOpen = false;
+
         addChild(overview);
         addChild(headerOverview);
         addChild(trayLabel);
@@ -61,6 +70,7 @@ public class MainPage extends Container {
         addChild(menuContainer);
 
         addChild(sensorDetail);
+        addChild(actuatorDetail);
     }
 
     public void setOnWifiClick(HeaderOverview.onWifiClickListener onWifiClick) {
@@ -95,6 +105,18 @@ public class MainPage extends Container {
         this.sensorDetail.setOnSwipeListener(listener);
     }
 
+    public void setOnActuatorDetailBackListener(ActuatorDetail.onBackListener listener) {
+        this.actuatorDetail.setOnBackListener(listener);
+    }
+
+    public void setOnActuatorToggleRequestedListener(ActuatorToggleListener listener) {
+        this.actuatorDetail.setOnToggleRequestedListener(listener);
+    }
+
+    public void setOnActuatorDetailSwipeListener(HorizontalSwipeListener listener) {
+        this.actuatorDetail.setOnSwipeListener(listener);
+    }
+
     public void updateWifiNetworks(WifiNetwork[] networks) {
         this.wifiContainer.setNetworks(networks);
     }
@@ -127,10 +149,6 @@ public class MainPage extends Container {
         this.menuContainer.setIndicator(total, selected);
     }
 
-    public void updateSensorDetailTitle(String text) {
-        this.sensorDetail.setDetailTitle(text);
-    }
-
     public void updateSensorDetail(
             String title,
             SensorDisplayItem item,
@@ -144,6 +162,11 @@ public class MainPage extends Container {
     ) {
         this.sensorDetail.setDetailTitle(title);
         this.sensorDetail.setSensorItem(item, minValue, maxValue, historyPoints, historySummary, sensorThreshold, indicatorTotal, indicatorSelectedIndex);
+    }
+
+    public void updateActuatorDetail(String detailTitle, ActuatorDisplayItem displayItem) {
+        this.actuatorDetail.setDetailTitle(detailTitle);
+        this.actuatorDetail.setActuatorItem(displayItem);
     }
 
     public void clearSensorDetail() {
@@ -192,6 +215,27 @@ public class MainPage extends Container {
         requestRender();
     }
 
+    public void openActuatorDetail() {
+        this.sensorDetailOpen = false;
+        this.sensorDetail.setEnabled(false);
+
+        this.menuOpen = false;
+        this.menuContainer.setEnabled(false);
+
+        this.wifiOpen = false;
+        this.wifiContainer.setEnabled(false);
+
+        this.actuatorDetailOpen = true;
+        this.actuatorDetail.setEnabled(true);
+
+        this.headerOverview.setEnabled(false);
+        this.overview.setEnabled(false);
+        this.footerOverview.setEnabled(false);
+
+        requestLayOut();
+        requestRender();
+    }
+
     public void closeSensorDetail() {
         this.sensorDetailOpen = false;
 
@@ -200,6 +244,20 @@ public class MainPage extends Container {
         this.footerOverview.setEnabled(true);
         this.headerOverview.setEnabled(true);
         this.menuContainer.setEnabled(true);
+
+        requestLayOut();
+        requestRender();
+    }
+
+    public void closeActuatorDetail() {
+        this.actuatorDetailOpen = false;
+        this.actuatorDetail.setEnabled(false);
+
+        this.headerOverview.setEnabled(true);
+        this.overview.setEnabled(true);
+        this.footerOverview.setEnabled(true);
+        this.menuContainer.setEnabled(true);
+        this.wifiContainer.setEnabled(true);
 
         requestLayOut();
         requestRender();
@@ -256,8 +314,10 @@ public class MainPage extends Container {
         layOutChild(this.menuContainer, menuX, menuY, menuWidth, menuHeight);
 
         int sensorDetailY = this.sensorDetailOpen ? 0 : contentHeight;
-
         layOutChild(this.sensorDetail, 0, sensorDetailY, contentWidth, contentHeight);
+
+        int actuatorDetailY = this.actuatorDetailOpen ? 0 : contentHeight;
+        layOutChild(this.actuatorDetail, 0, actuatorDetailY, contentWidth, contentHeight);
     }
 
     @Override
@@ -279,24 +339,17 @@ public class MainPage extends Container {
         computeChildOptimalSize(this.headerOverview, displayWidth, headerHeight);
         computeChildOptimalSize(this.trayLabel, displayWidth, trayLabelHeight);
 
-        if (this.overview != null) {
-            computeChildOptimalSize(this.overview, displayWidth, mainContentHeight);
-        }
+        computeChildOptimalSize(this.overview, displayWidth, mainContentHeight);
 
         computeChildOptimalSize(this.indicator, displayWidth, indicatorHeight);
         computeChildOptimalSize(this.footerOverview, displayWidth, footerHeight);
 
-        if (this.wifiContainer != null) {
-            computeChildOptimalSize(this.wifiContainer, this.wifiContainer.getWifiFrameWidth(), this.wifiContainer.getWifiFrameHeight());
-        }
+        computeChildOptimalSize(this.wifiContainer, this.wifiContainer.getWifiFrameWidth(), this.wifiContainer.getWifiFrameHeight());
 
-        if (this.menuContainer != null) {
-            computeChildOptimalSize(this.menuContainer, displayWidth, this.menuContainer.getMenuHeight());
-        }
+        computeChildOptimalSize(this.menuContainer, displayWidth, this.menuContainer.getMenuHeight());
 
-        if (this.sensorDetail != null) {
-            computeChildOptimalSize(this.sensorDetail, displayWidth, displayHeight);
-        }
+        computeChildOptimalSize(this.sensorDetail, displayWidth, displayHeight);
+        computeChildOptimalSize(this.actuatorDetail, displayWidth, displayHeight);
 
         size.setSize(displayWidth, displayHeight);
     }
