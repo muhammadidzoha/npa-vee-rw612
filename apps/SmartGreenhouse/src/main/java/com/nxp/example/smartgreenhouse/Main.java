@@ -2,6 +2,7 @@ package com.nxp.example.smartgreenhouse;
 
 import com.microej.partial.support.PartialRenderPolicy;
 import com.nxp.example.smartgreenhouse.controllers.AppController;
+import com.nxp.example.smartgreenhouse.models.sensor.SensorDefinitionProvider;
 import ej.annotation.NonNullByDefault;
 import ej.microui.MicroUI;
 import ej.mwt.Desktop;
@@ -20,6 +21,8 @@ public class Main {
         LOGGER.info("NXP Platform Accelerator VM running on " + Device.getArchitecture());
 
         MicroUI.start();
+
+        SensorDefinitionProvider.initialize();
 
         CascadingStylesheet stylesheet = defineStylesheet();
 
