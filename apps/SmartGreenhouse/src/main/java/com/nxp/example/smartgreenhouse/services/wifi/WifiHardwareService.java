@@ -34,11 +34,11 @@ public final class WifiHardwareService {
 
         LOGGER.log(Level.INFO, "After WifiManager.getJoined()");
 
-        LOGGER.log(Level.INFO, "Before WifiManager.scan(true)");
+        LOGGER.log(Level.INFO, "Before WifiManager.scan(false)");
 
-        AccessPoint[] accessPoints = this.wifiManager.scan(true);
+        AccessPoint[] accessPoints = this.wifiManager.scan(false);
 
-        LOGGER.log(Level.INFO, "After WifiManager.scan(true)" + " | count: " + accessPoints.length);
+        LOGGER.log(Level.INFO, "After WifiManager.scan(false)" + " | count: " + accessPoints.length);
 
         WifiNetwork[] networks = new WifiNetwork[accessPoints.length];
 
