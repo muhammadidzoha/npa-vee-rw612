@@ -220,42 +220,35 @@ public class HeaderController implements
         this.mainPage.stopWifiScanning();
 
         LOGGER.log(Level.INFO, "WiFi disconnection started" + " | SSID: " + network.getName());
+
         Thread worker =
                 new Thread(
                         new Runnable() {
                             @Override
                             public void run() {
-                                boolean disconnectSuccessful = false;
-                                boolean actuallyConnected = true;
+                                boolean successful = false;
                                 String errorMessage = null;
                                 try {
-                                    disconnectSuccessful = HeaderController.this.wifiService.disconnect();
-                                    actuallyConnected = HeaderController.this.wifiService.isConnected();
+                                    HeaderController.this.wifiService.disconnect();
+                                    successful = true;
                                 } catch (Exception exception) {
                                     errorMessage = exception.toString();
-                                    try {
-                                        actuallyConnected = HeaderController.this.wifiService.isConnected();
-                                    } catch (Exception statusException) {
-                                        actuallyConnected = true;
-                                        LOGGER.log(Level.WARNING, "Failed to read WiFi status" + " after disconnect error: " + statusException);
-                                    }
                                 }
-                                final boolean success = disconnectSuccessful;
-                                final boolean connected = actuallyConnected;
+                                final boolean disconnectSuccessful = successful;
                                 final String error = errorMessage;
                                 MicroUI.callSerially(
                                         new Runnable() {
                                             @Override
                                             public void run() {
                                                 HeaderController.this.wifiDisconnectionRunning = false;
-                                                HeaderController.this.mainPage.updateWifiConnectionStatus(connected);
-                                                if (success && !connected) {
-                                                    LOGGER.log(Level.INFO, "WiFi disconnection successful" + " | SSID: " + network.getName());
+                                                if (disconnectSuccessful) {
+                                                    LOGGER.log(Level.INFO, "WiFi disconnection completed" + " | SSID: " + network.getName());
+                                                    HeaderController.this.mainPage.updateWifiConnectionStatus(false);
+                                                    if (HeaderController.this.mainPage.isWifiOpen()) {
+                                                        HeaderController.this.mainPage.closeWifi();
+                                                    }
                                                 } else {
                                                     LOGGER.log(Level.WARNING, "WiFi disconnection failed" + " | SSID: " + network.getName() + " | reason: " + error);
-                                                }
-                                                if (HeaderController.this.mainPage.isWifiOpen()) {
-                                                    HeaderController.this.startWifiScan();
                                                 }
                                             }
                                         }

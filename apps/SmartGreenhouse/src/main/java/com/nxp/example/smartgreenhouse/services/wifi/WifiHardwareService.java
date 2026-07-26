@@ -106,8 +106,8 @@ public final class WifiHardwareService {
             throw new IllegalArgumentException("WifiNetwork tidak boleh null.");
         }
 
-        AccessPoint targetAccessPoint = network.getAccessPoint();
-        if (targetAccessPoint == null) {
+        AccessPoint accessPoint = network.getAccessPoint();
+        if (accessPoint == null) {
             throw new IllegalArgumentException("AccessPoint asli tidak tersedia.");
         }
 
@@ -123,55 +123,28 @@ public final class WifiHardwareService {
             validatePassword(passphrase);
         }
 
-        AccessPoint currentAccessPoint = this.wifiManager.getJoined();
+        LOGGER.log(Level.INFO, "Before WifiManager.join()" + " | SSID: " + accessPoint.getSSID());
 
-        if (isSameAccessPoint(currentAccessPoint, targetAccessPoint)) {
-            LOGGER.log(Level.INFO, "WiFi already connected" + " | SSID: " + targetAccessPoint.getSSID());
-            return true;
-        }
-
-        if (currentAccessPoint != null) {
-            LOGGER.log(Level.INFO, "Leaving current WiFi before switching" + " | SSID: " + currentAccessPoint.getSSID());
-            this.wifiManager.leave();
-            AccessPoint accessPointAfterLeave = this.wifiManager.getJoined();
-
-            if (accessPointAfterLeave != null) {
-                throw new IOException("Gagal meninggalkan jaringan Wi-Fi sebelumnya.");
-            }
-        }
-
-        LOGGER.log(Level.INFO, "Joining WiFi" + " | SSID: " + targetAccessPoint.getSSID() + " | security: " + securityMode);
-
-        this.wifiManager.join(targetAccessPoint, passphrase, securityMode);
-
+        this.wifiManager.join(accessPoint, passphrase, securityMode);
+        LOGGER.log(Level.INFO, "After WifiManager.join()" + " | SSID: " + accessPoint.getSSID());
+        LOGGER.log(Level.INFO, "Before WifiManager.getJoined() after join");
         AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
-        boolean joined = isSameAccessPoint(joinedAccessPoint, targetAccessPoint);
 
-        LOGGER.log(Level.INFO, "WiFi join completed" + " | SSID: " + targetAccessPoint.getSSID() + " | joined: " + joined);
+        LOGGER.log(Level.INFO, "After WifiManager.getJoined() after join");
+        boolean connected = isSameAccessPoint(joinedAccessPoint, accessPoint);
 
-        return joined;
+        LOGGER.log(Level.INFO, "WiFi connection result" + " | SSID: " + accessPoint.getSSID() + " | connected: " + connected);
+
+        return connected;
     }
 
-    public synchronized boolean disconnect() throws IOException {
-        AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
+    public synchronized void disconnect() throws IOException {
 
-        if (joinedAccessPoint == null) {
-            LOGGER.log(Level.INFO, "Disconnect skipped because WiFi is not connected");
-            return true;
-        }
-
-        String connectedSsid = joinedAccessPoint.getSSID();
-        LOGGER.log(Level.INFO, "Leaving WiFi" + " | SSID: " + connectedSsid);
+        LOGGER.log(Level.INFO, "Before WifiManager.leave()");
 
         this.wifiManager.leave();
 
-        AccessPoint accessPointAfterLeave = this.wifiManager.getJoined();
-
-        boolean disconnected = accessPointAfterLeave == null;
-
-        LOGGER.log(Level.INFO, "WiFi leave completed" + " | SSID: " + connectedSsid + " | disconnected: " + disconnected);
-
-        return disconnected;
+        LOGGER.log(Level.INFO, "After WifiManager.leave()");
     }
 
     public synchronized boolean isConnected() throws IOException {
