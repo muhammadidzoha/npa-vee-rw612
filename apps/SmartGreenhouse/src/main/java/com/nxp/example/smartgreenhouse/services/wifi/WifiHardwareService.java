@@ -8,9 +8,13 @@ import ej.ecom.wifi.WifiCapability;
 import ej.ecom.wifi.WifiManager;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 
 public final class WifiHardwareService {
+
+    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: Wifi Hardware Service]");
 
     private final WifiManager wifiManager;
 
@@ -24,14 +28,28 @@ public final class WifiHardwareService {
     }
 
     public WifiNetwork[] scan() throws IOException {
-        AccessPoint joinedAccessPoint =
-                this.wifiManager.getJoined();
+        LOGGER.log(Level.INFO, "Before WifiManager.getJoined()");
+
+        AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
+
+        LOGGER.log(Level.INFO, "After WifiManager.getJoined()");
+
+        LOGGER.log(Level.INFO, "Before WifiManager.scan(true)");
 
         AccessPoint[] accessPoints = this.wifiManager.scan(true);
+
+        LOGGER.log(Level.INFO, "After WifiManager.scan(true)" + " | count: " + accessPoints.length);
+
         WifiNetwork[] networks = new WifiNetwork[accessPoints.length];
 
         for (int i = 0; i < accessPoints.length; i++) {
             AccessPoint accessPoint = accessPoints[i];
+            String ssid = accessPoint.getSSID();
+
+            if (ssid == null || ssid.length() == 0) {
+                continue;
+            }
+
             SecurityMode securityMode = accessPoint.getSecurityMode();
 
             if (securityMode == null) {
@@ -41,10 +59,35 @@ public final class WifiHardwareService {
             boolean secured = securityMode != SecurityMode.OPEN;
             boolean connected = isSameAccessPoint(joinedAccessPoint, accessPoint);
 
-            networks[i] = new WifiNetwork(accessPoint.getSSID(), accessPoint.getRSSI(), secured, connected, accessPoint, securityMode);
+            networks[i] = new WifiNetwork(ssid, accessPoint.getRSSI(), secured, connected, accessPoint, securityMode);
         }
 
-        return networks;
+        LOGGER.log(Level.INFO, "WifiHardwareService scan completed");
+
+        return removeNullNetworks(networks);
+    }
+
+    private static WifiNetwork[] removeNullNetworks(WifiNetwork[] networks) {
+        int validCount = 0;
+
+        for (WifiNetwork network : networks) {
+            if (network != null) {
+                validCount++;
+            }
+        }
+
+        WifiNetwork[] result = new WifiNetwork[validCount];
+
+        int resultIndex = 0;
+
+        for (WifiNetwork network : networks) {
+            if (network != null) {
+                result[resultIndex] = network;
+                resultIndex++;
+            }
+        }
+
+        return result;
     }
 
     public boolean connect(WifiNetwork network, String password) throws IOException {
