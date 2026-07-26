@@ -17,6 +17,7 @@ import ej.microui.MicroUI;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+
 public class HeaderController implements
         HeaderOverview.onWifiClickListener,
         WifiContainer.OnRefreshClickListener,
@@ -24,19 +25,13 @@ public class HeaderController implements
         WifiAuthenticationContainer.OnAuthenticationBackClickListener,
         WifiAuthenticationContainer.OnWifiConnectClickListener {
 
-    private static final Logger LOGGER =
-            Logger.getLogger("[SMART GREENHOUSE: HEADER CONTROLLER]");
-
-    private static final String INVALID_PASSWORD_MESSAGE = "Password harus 8-64 karakter.";
-
-    private static final String CONNECTION_FAILED_MESSAGE = "Gagal terhubung. Periksa password.";
+    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: HEADER CONTROLLER]");
 
     private final MainPage mainPage;
     private final WifiHardwareService wifiService;
 
     private boolean wifiScanRunning;
     private boolean wifiConnectionRunning;
-    private boolean wifiDisconnectionRunning;
 
     private Timer clockTimer;
 
@@ -45,12 +40,12 @@ public class HeaderController implements
     public HeaderController(MainPage mainPage) {
         this.mainPage = mainPage;
         this.wifiService = new WifiHardwareService();
-
         this.wifiScanRunning = false;
+
         this.wifiConnectionRunning = false;
-        this.wifiDisconnectionRunning = false;
 
         this.clockTimer = null;
+
         this.wifiScanRequestId = 0;
     }
 
@@ -71,8 +66,10 @@ public class HeaderController implements
     public void onClicked() {
         if (this.mainPage.isWifiOpen()) {
             this.wifiScanRequestId++;
+
             this.mainPage.stopWifiScanning();
             this.mainPage.closeWifi();
+
             LOGGER.log(Level.INFO, "WiFi menu closed");
             return;
         }
@@ -97,12 +94,7 @@ public class HeaderController implements
             return;
         }
 
-        if (isWifiOperationRunning()) {
-            return;
-        }
-
         if (network.isConnected()) {
-            startWifiDisconnect(network);
             return;
         }
 
@@ -111,10 +103,6 @@ public class HeaderController implements
 
     @Override
     public void onAuthenticationBackClicked() {
-        if (this.wifiConnectionRunning) {
-            return;
-        }
-
         LOGGER.log(Level.INFO, "WiFi authentication closed");
         this.mainPage.closeWifiAuthenticationToList();
     }
@@ -125,7 +113,7 @@ public class HeaderController implements
             return;
         }
 
-        if (isWifiOperationRunning()) {
+        if (this.wifiConnectionRunning || this.wifiScanRunning) {
             return;
         }
 
@@ -137,15 +125,14 @@ public class HeaderController implements
             int passwordLength = password == null ? 0 : password.length();
             if (passwordLength < 8 || passwordLength > 64) {
                 LOGGER.log(Level.WARNING, "WiFi password must contain " + "8 to 64 characters");
-                this.mainPage.showWifiAuthenticationError(INVALID_PASSWORD_MESSAGE);
                 return;
             }
         }
 
         this.wifiConnectionRunning = true;
 
-        this.mainPage.clearWifiAuthenticationError();
         this.mainPage.showWifiConnecting();
+
         LOGGER.log(Level.INFO, "WiFi connection started" + " | SSID: " + network.getName());
 
         Thread worker =
@@ -153,116 +140,46 @@ public class HeaderController implements
                         new Runnable() {
                             @Override
                             public void run() {
-                                boolean connectionSuccessful = false;
-                                boolean actuallyConnected = false;
-                                String errorMessage = null;
+                                boolean connectionSuccessful;
+                                String errorMessage;
                                 try {
                                     connectionSuccessful = HeaderController.this.wifiService.connect(network, password);
-                                    actuallyConnected = HeaderController.this.wifiService.isConnected();
-                                    if (!connectionSuccessful) {
-                                        errorMessage = "Access point was not joined.";
-                                    }
+                                    errorMessage = connectionSuccessful ? null : "Access point was not joined.";
                                 } catch (Exception exception) {
                                     connectionSuccessful = false;
                                     errorMessage = exception.toString();
-                                    try {
-                                        actuallyConnected = HeaderController.this.wifiService.isConnected();
-                                    } catch (Exception statusException) {
-                                        actuallyConnected = false;
-                                        LOGGER.log(Level.WARNING, "Failed to read WiFi status" + " after connection error: " + statusException);
-                                    }
                                 }
-
                                 final boolean success = connectionSuccessful;
-                                final boolean connected = actuallyConnected;
                                 final String error = errorMessage;
                                 MicroUI.callSerially(
                                         new Runnable() {
                                             @Override
                                             public void run() {
                                                 HeaderController.this.wifiConnectionRunning = false;
-                                                HeaderController.this.mainPage.updateWifiConnectionStatus(connected);
                                                 if (!HeaderController.this.mainPage.isWifiAuthenticationOpen()) {
                                                     return;
                                                 }
-
                                                 if (success) {
                                                     LOGGER.log(Level.INFO, "WiFi connection successful" + " | SSID: " + network.getName());
+                                                    HeaderController.this.mainPage.updateWifiConnectionStatus(true);
                                                     HeaderController.this.mainPage.closeWifiAfterConnectionSuccess();
                                                 } else {
                                                     LOGGER.log(Level.WARNING, "WiFi connection failed" + " | SSID: " + network.getName() + " | reason: " + error);
                                                     HeaderController.this.mainPage.stopWifiConnecting();
-                                                    HeaderController.this.mainPage.showWifiAuthenticationError(CONNECTION_FAILED_MESSAGE);
-                                                }
-                                            }
-                                        }
-                                );
-                            }
-                        },
-                        "wifi-connect"
-                );
-
-        worker.start();
-    }
-
-    private void startWifiDisconnect(final WifiNetwork network) {
-        if (network == null) {
-            return;
-        }
-
-        if (isWifiOperationRunning()) {
-            return;
-        }
-
-        this.wifiDisconnectionRunning = true;
-
-        this.wifiScanRequestId++;
-        this.mainPage.stopWifiScanning();
-
-        LOGGER.log(Level.INFO, "WiFi disconnection started" + " | SSID: " + network.getName());
-
-        Thread worker =
-                new Thread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                boolean successful = false;
-                                String errorMessage = null;
-                                try {
-                                    HeaderController.this.wifiService.disconnect();
-                                    successful = true;
-                                } catch (Exception exception) {
-                                    errorMessage = exception.toString();
-                                }
-                                final boolean disconnectSuccessful = successful;
-                                final String error = errorMessage;
-                                MicroUI.callSerially(
-                                        new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                HeaderController.this.wifiDisconnectionRunning = false;
-                                                if (disconnectSuccessful) {
-                                                    LOGGER.log(Level.INFO, "WiFi disconnection completed" + " | SSID: " + network.getName());
                                                     HeaderController.this.mainPage.updateWifiConnectionStatus(false);
-                                                    if (HeaderController.this.mainPage.isWifiOpen()) {
-                                                        HeaderController.this.mainPage.closeWifi();
-                                                    }
-                                                } else {
-                                                    LOGGER.log(Level.WARNING, "WiFi disconnection failed" + " | SSID: " + network.getName() + " | reason: " + error);
                                                 }
                                             }
                                         }
                                 );
                             }
-                        },
-                        "wifi-disconnect"
+                        }
                 );
 
         worker.start();
     }
 
     private void startWifiScan() {
-        if (isWifiOperationRunning()) {
+        if (this.wifiScanRunning || this.wifiConnectionRunning) {
             return;
         }
 
@@ -272,6 +189,7 @@ public class HeaderController implements
         this.mainPage.showWifiScanning();
 
         LOGGER.log(Level.INFO, "WiFi scanning started");
+
         Thread scanThread =
                 new Thread(
                         new Runnable() {
@@ -301,7 +219,9 @@ public class HeaderController implements
                                                 }
                                             }
                                     );
-                                } catch (final Exception exception) {
+                                } catch (
+                                        final Exception exception
+                                ) {
                                     MicroUI.callSerially(
                                             new Runnable() {
                                                 @Override
@@ -319,10 +239,6 @@ public class HeaderController implements
                 );
 
         scanThread.start();
-    }
-
-    private boolean isWifiOperationRunning() {
-        return this.wifiScanRunning || this.wifiConnectionRunning || this.wifiDisconnectionRunning;
     }
 
     private void checkWifiHardware() {
@@ -355,8 +271,7 @@ public class HeaderController implements
                                     );
                                 }
                             }
-                        },
-                        "wifi-hardware-check"
+                        }
                 );
 
         worker.start();
