@@ -175,6 +175,25 @@ public final class WifiAuthenticationContainer extends Container {
         requestRender();
     }
 
+    public void stopConnecting() {
+        if (!this.connecting) {
+            return;
+        }
+
+        this.connecting = false;
+
+        this.connectingProgress.stop();
+
+        this.backButton.setEnabled(true);
+        this.passwordField.setEnabled(true);
+        this.connectButton.setEnabled(true);
+
+        this.keyboard.activate();
+
+        requestLayOut();
+        requestRender();
+    }
+
     public void open(WifiNetwork network) {
         this.network = network;
 

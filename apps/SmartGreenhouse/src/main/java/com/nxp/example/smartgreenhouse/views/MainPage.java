@@ -273,6 +273,14 @@ public class MainPage extends Container {
         this.wifiAuthenticationContainer.showConnecting();
     }
 
+    public void stopWifiConnecting() {
+        if (!this.wifiAuthenticationOpen) {
+            return;
+        }
+
+        this.wifiAuthenticationContainer.stopConnecting();
+    }
+
     public void closeWifiAuthenticationToList() {
         this.wifiAuthenticationOpen = false;
 
