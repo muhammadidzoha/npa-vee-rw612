@@ -15,6 +15,8 @@ import java.util.logging.Logger;
 
 public final class WifiHardwareService {
 
+    private static final int MAX_VISIBLE_NETWORKS = 16;
+
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: Wifi Hardware Service]");
 
     private final WifiManager wifiManager;
@@ -28,65 +30,72 @@ public final class WifiHardwareService {
     }
 
     public synchronized WifiScanResult scan() throws IOException {
-
         LOGGER.log(Level.INFO, "Before WifiManager.scan(false)");
 
-        AccessPoint[] accessPoints = this.wifiManager.scan(false);
-        LOGGER.log(Level.INFO, "After WifiManager.scan(false)" + " | count: " + accessPoints.length);
+        AccessPoint[] scannedAccessPoints = this.wifiManager.scan(false);
+        LOGGER.log(Level.INFO, "After WifiManager.scan(false)" + " | count: " + scannedAccessPoints.length);
         LOGGER.log(Level.INFO, "Before WifiManager.getJoined() after scan");
 
         AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
         LOGGER.log(Level.INFO, "After WifiManager.getJoined() after scan");
 
-        WifiNetwork[] networks = new WifiNetwork[accessPoints.length];
-        for (int i = 0; i < accessPoints.length; i++) {
-            AccessPoint accessPoint = accessPoints[i];
-            if (accessPoint == null) {
-                continue;
-            }
+        WifiNetwork[] mergedNetworks = new WifiNetwork[MAX_VISIBLE_NETWORKS];
 
-            String ssid = accessPoint.getSSID();
-            if (ssid == null || ssid.length() == 0) {
-                continue;
-            }
+        int networkCount = 0;
 
-            SecurityMode securityMode = accessPoint.getSecurityMode();
-            if (securityMode == null) {
-                securityMode = SecurityMode.UNKNOWN;
-            }
-
-            boolean secured = securityMode != SecurityMode.OPEN;
-            boolean networkConnected = isSameAccessPoint(joinedAccessPoint, accessPoint);
-
-            networks[i] = new WifiNetwork(ssid, accessPoint.getRSSI(), secured, networkConnected, accessPoint, securityMode);
+        if (hasVisibleSsid(joinedAccessPoint)) {
+            mergedNetworks[networkCount] = createWifiNetwork(joinedAccessPoint, true);
+            networkCount++;
+            LOGGER.log(Level.INFO, "Connected WiFi added to list" + " | SSID: " + joinedAccessPoint.getSSID());
         }
 
-        WifiNetwork[] validNetworks = removeNullNetworks(networks);
+        for (int i = 0; i < scannedAccessPoints.length && networkCount < MAX_VISIBLE_NETWORKS; i++) {
+            AccessPoint scannedAccessPoint = scannedAccessPoints[i];
+            if (!hasVisibleSsid(scannedAccessPoint)) {
+                continue;
+            }
 
+            if (isSameAccessPoint(joinedAccessPoint, scannedAccessPoint)) {
+                continue;
+            }
+
+            mergedNetworks[networkCount] = createWifiNetwork(scannedAccessPoint, false);
+
+            networkCount++;
+        }
+
+        WifiNetwork[] result = trimNetworks(mergedNetworks, networkCount);
         boolean connected = joinedAccessPoint != null;
-        LOGGER.log(Level.INFO, "WifiHardwareService scan completed" + " | networks: " + validNetworks.length + " | connected: " + connected);
+        LOGGER.log(Level.INFO, "WifiHardwareService scan completed" + " | networks: " + result.length + " | connected: " + connected);
 
-        return new WifiScanResult(validNetworks, connected);
+        return new WifiScanResult(result, connected);
     }
 
-    private static WifiNetwork[] removeNullNetworks(WifiNetwork[] networks) {
-        int validCount = 0;
+    private static WifiNetwork createWifiNetwork(AccessPoint accessPoint, boolean connected) {
+        String ssid = accessPoint.getSSID();
 
-        for (WifiNetwork network : networks) {
-            if (network != null) {
-                validCount++;
-            }
+        SecurityMode securityMode = accessPoint.getSecurityMode();
+        if (securityMode == null) {
+            securityMode = SecurityMode.UNKNOWN;
         }
 
-        WifiNetwork[] result = new WifiNetwork[validCount];
+        boolean secured = securityMode != SecurityMode.OPEN;
+        return new WifiNetwork(ssid, accessPoint.getRSSI(), secured, connected, accessPoint, securityMode);
+    }
 
-        int resultIndex = 0;
+    private static boolean hasVisibleSsid(AccessPoint accessPoint) {
+        if (accessPoint == null) {
+            return false;
+        }
 
-        for (WifiNetwork network : networks) {
-            if (network != null) {
-                result[resultIndex] = network;
-                resultIndex++;
-            }
+        String ssid = accessPoint.getSSID();
+        return ssid != null && ssid.length() > 0;
+    }
+
+    private static WifiNetwork[] trimNetworks(WifiNetwork[] networks, int length) {
+        WifiNetwork[] result = new WifiNetwork[length];
+        for (int i = 0; i < length; i++) {
+            result[i] = networks[i];
         }
 
         return result;
@@ -108,7 +117,6 @@ public final class WifiHardwareService {
         }
 
         String passphrase = password == null ? "" : password;
-
         if (securityMode == SecurityMode.OPEN) {
             passphrase = "";
         } else {
@@ -132,7 +140,6 @@ public final class WifiHardwareService {
 
     public synchronized String getConnectedSsid() throws IOException {
         AccessPoint accessPoint = this.wifiManager.getJoined();
-
         if (accessPoint == null) {
             return null;
         }
@@ -142,7 +149,6 @@ public final class WifiHardwareService {
 
     private static void validatePassword(String password) {
         int length = password.length();
-
         if (length < 8 || length > 64) {
             throw new IllegalArgumentException("Password Wi-Fi harus terdiri " + "dari 8 sampai 64 karakter.");
         }
