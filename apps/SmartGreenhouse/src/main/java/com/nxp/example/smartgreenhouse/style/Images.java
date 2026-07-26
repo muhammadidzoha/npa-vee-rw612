@@ -15,6 +15,8 @@ public class Images {
 
     public static final String BUTTON_WIFI = "/asset/image/ButtonWifi.png";
 
+    public static final String BUTTON_WIFI_CONNECT = "/asset/image/ButtonWifiConnect.png";
+
     public static final String MENU_FRAME = "/asset/image/MenuFrame.png";
 
     public static final String CARD_MENU_FRAME = "/asset/image/CardMenuFrame.png";

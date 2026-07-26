@@ -3,6 +3,7 @@ package com.nxp.example.smartgreenhouse;
 import com.microej.partial.support.PartialRenderPolicy;
 import com.nxp.example.smartgreenhouse.controllers.AppController;
 import com.nxp.example.smartgreenhouse.models.sensor.SensorDefinitionProvider;
+import com.nxp.example.smartgreenhouse.views.wifi.WifiKeyboardStyles;
 import ej.annotation.NonNullByDefault;
 import ej.microui.MicroUI;
 import ej.mwt.Desktop;
@@ -48,6 +49,8 @@ public class Main {
     }
 
     private static CascadingStylesheet defineStylesheet() {
-        return new CascadingStylesheet();
+        CascadingStylesheet stylesheet = new CascadingStylesheet();
+        WifiKeyboardStyles.populate(stylesheet);
+        return stylesheet;
     }
 }

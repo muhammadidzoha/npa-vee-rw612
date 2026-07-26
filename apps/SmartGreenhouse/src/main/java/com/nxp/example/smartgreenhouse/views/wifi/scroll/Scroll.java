@@ -123,6 +123,22 @@ public class Scroll extends Container {
         return super.handleEvent(event);
     }
 
+    public void reset() {
+        this.value = 0;
+
+        SwipeEventHandler handler = this.swipeEventHandler;
+
+        if (handler != null) {
+            handler.stop();
+            handler.moveTo(0);
+        }
+
+        shift();
+
+        requestLayOut();
+        requestRender();
+    }
+
     private int limit(int position) {
         int max = 0;
         Widget child = this.child;

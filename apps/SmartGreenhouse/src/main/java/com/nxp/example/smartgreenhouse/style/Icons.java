@@ -4,6 +4,8 @@ public class Icons {
 
     public static final String WIFI_ICON_16 = "/asset/icon/WifiIcon16.png";
 
+    public static final String WIFI_SLASH_ICON_16 = "/asset/icon/WifiSlashIcon16.png";
+
     public static final String LOCK_ICON_5 = "/asset/icon/LockIcon5.png";
 
     public static final String NITROGEN_ICON_32 =  "/asset/icon/NitrogenIcon32.png";

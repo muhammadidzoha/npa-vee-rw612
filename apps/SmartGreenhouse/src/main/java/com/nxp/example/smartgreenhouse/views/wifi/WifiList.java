@@ -10,6 +10,9 @@ import ej.microui.display.Font;
 import ej.microui.display.GraphicsContext;
 import ej.microui.display.Image;
 import ej.microui.display.Painter;
+import ej.microui.event.Event;
+import ej.microui.event.generator.Buttons;
+import ej.microui.event.generator.Pointer;
 import ej.mwt.Widget;
 import ej.mwt.util.Size;
 
@@ -28,21 +31,93 @@ public class WifiList extends Widget {
 
     private static final String STATUS_CONNECTED_TEXT = "Aktif";
 
+    private static final int TAP_THRESHOLD = 8;
+
     private WifiNetwork network;
     private int index;
+
+    private WifiContainer.OnWifiNetworkClickListener onWifiNetworkClickListener;
+
+    private boolean pointerPressed;
+    private int pointerStartX;
+    private int pointerStartY;
 
     private final Image dot;
     private final Image statusConnected;
 
     public WifiList() {
+        setEnabled(true);
+
         this.dot = Image.getImage(Images.DOT_ACTIVE);
         this.statusConnected = Image.getImage(Images.OPTIMAL_ALERT_FRAME_S);
+
+        this.onWifiNetworkClickListener = null;
+        this.pointerPressed = false;
+        this.pointerStartX = 0;
+        this.pointerStartY = 0;
     }
 
     public void setNetwork(WifiNetwork network, int index) {
         this.network = network;
         this.index = index;
         requestRender();
+    }
+
+    public void setOnWifiNetworkClickListener(WifiContainer.OnWifiNetworkClickListener listener) {
+        this.onWifiNetworkClickListener = listener;
+    }
+
+    @Override
+    public boolean handleEvent(int event) {
+        if (this.network == null) {
+            return super.handleEvent(event);
+        }
+
+        if (Event.getType(event) != Pointer.EVENT_TYPE) {
+            return super.handleEvent(event);
+        }
+
+        Pointer pointer = (Pointer) Event.getGenerator(event);
+
+        int action = Buttons.getAction(event);
+
+        int pointerX = pointer.getX();
+        int pointerY = pointer.getY();
+
+        if (action == Buttons.PRESSED) {
+            this.pointerPressed = true;
+
+            this.pointerStartX = pointerX;
+            this.pointerStartY = pointerY;
+
+            return super.handleEvent(event);
+        }
+
+        if (action == Pointer.DRAGGED) {
+            return super.handleEvent(event);
+        }
+
+        if (action == Buttons.RELEASED) {
+            if (!this.pointerPressed) {
+                return super.handleEvent(event);
+            }
+
+            this.pointerPressed = false;
+
+            int deltaX = pointerX - this.pointerStartX;
+            int deltaY = pointerY - this.pointerStartY;
+
+            int absoluteDeltaX = Math.abs(deltaX);
+            int absoluteDeltaY = Math.abs(deltaY);
+
+            boolean isTap = absoluteDeltaX <= TAP_THRESHOLD && absoluteDeltaY <= TAP_THRESHOLD;
+            if (isTap && this.onWifiNetworkClickListener != null) {
+                this.onWifiNetworkClickListener.onWifiNetworkClicked(this.network);
+                return true;
+            }
+        }
+
+        return super.handleEvent(event);
     }
 
     @Override

@@ -25,7 +25,11 @@ public class HeaderOverview extends Widget {
     private onWifiClickListener listener;
 
     private final Image headerFrame;
-    private final Image icon;
+
+    private final Image wifiConnectedIcon;
+    private final Image wifiDisconnectedIcon;
+
+    private boolean wifiConnected;
 
     private static final String APP = "SMART GREENHOUSE";
     private static final String ICON_TEXT = "WiFi";
@@ -43,7 +47,9 @@ public class HeaderOverview extends Widget {
 
     public HeaderOverview() {
         this.headerFrame = Image.getImage(Images.HEADER_FRAME);
-        this.icon = Image.getImage(Icons.WIFI_ICON_16);
+        this.wifiConnectedIcon = Image.getImage(Icons.WIFI_ICON_16);
+        this.wifiDisconnectedIcon = Image.getImage(Icons.WIFI_SLASH_ICON_16);
+        this.wifiConnected = false;
         setEnabled(true);
     }
 
@@ -53,6 +59,16 @@ public class HeaderOverview extends Widget {
 
     public void setTime(String time) {
         this.time = time;
+        requestRender();
+    }
+
+    public void setWifiConnected(boolean connected) {
+        if (this.wifiConnected == connected) {
+            return;
+        }
+
+        this.wifiConnected = connected;
+
         requestRender();
     }
 
@@ -74,8 +90,11 @@ public class HeaderOverview extends Widget {
 
         int imageX = Alignment.computeLeftX(this.headerFrame.getWidth(), 0, contentWidth, style.getHorizontalAlignment());
         int imageY = Alignment.computeTopY(this.headerFrame.getHeight(), 0, contentHeight, style.getVerticalAlignment());
-
         int rightX = contentWidth - 14;
+
+        Image currentWifiIcon = this.wifiConnected ? this.wifiConnectedIcon : this.wifiDisconnectedIcon;
+        int wifiIconColor = this.wifiConnected ? ApplicationColors.PRIMARY_COLOR : ApplicationColors.THIRD_COLOR;
+        int wifiTextColor = this.wifiConnected ? ApplicationColors.SECONDARY_COLOR : ApplicationColors.THIRD_COLOR;
 
         g.setColor(ApplicationColors.BACKGROUND);
         Painter.fillRectangle(g, 0, 0, contentWidth, contentHeight);
@@ -87,25 +106,37 @@ public class HeaderOverview extends Widget {
 
         int iconTitleWidth = textFont.stringWidth(ICON_TEXT);
         int startRightContent = contentWidth - (contentWidth * 22 / 100) - iconTitleWidth;
-        int titleBaselineY = titleY + textFont.getBaselinePosition();
-        int iconY = titleY + (textFont.getHeight() - icon.getHeight()) / 2 - 1;
-        Painter.drawImage(g, this.icon, startRightContent, iconY);
 
-        int iconX = this.icon.getWidth();
-        int gap = iconX + 3;
+        int titleBaselineY = titleY + textFont.getBaselinePosition();
+        int iconY = titleY + (textFont.getHeight() - currentWifiIcon.getHeight()) / 2 - 1;
+
+        g.setColor(wifiIconColor);
+        Painter.drawImage(g, currentWifiIcon, startRightContent, iconY);
+
+        int iconWidth = currentWifiIcon.getWidth();
+        int gap = iconWidth + 3;
+
         int iconTitleY = titleBaselineY - textFont.getBaselinePosition();
-        g.setColor(ApplicationColors.SECONDARY_COLOR);
+
+        g.setColor(wifiTextColor);
         Painter.drawString(g, ICON_TEXT, textFont, startRightContent + gap, iconTitleY);
 
         this.wifiAreaX = startRightContent;
-        this.wifiAreaY = iconY;
-        this.wifiAreaWidth = (startRightContent + gap + iconTitleWidth) - startRightContent;
-        this.wifiAreaHeight = this.icon.getHeight();
+        this.wifiAreaY = Math.min(iconY, iconTitleY);
+        this.wifiAreaWidth = iconWidth + 3 + iconTitleWidth;
+
+        int iconBottom = iconY + currentWifiIcon.getHeight();
+        int textBottom = iconTitleY + textFont.getHeight();
+
+        this.wifiAreaHeight = Math.max(iconBottom, textBottom) - this.wifiAreaY;
 
         g.setColor(ApplicationColors.SECONDARY_COLOR);
         int clockWidth = textFont.stringWidth(this.time);
-        rightX -= (clockWidth + offsetClockX);
+
+        rightX -= clockWidth + offsetClockX;
+
         int timeY = titleBaselineY - textFont.getBaselinePosition();
+
         Painter.drawString(g, this.time, textFont, rightX, timeY);
     }
 

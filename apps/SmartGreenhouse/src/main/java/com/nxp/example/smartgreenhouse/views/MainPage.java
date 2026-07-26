@@ -14,6 +14,7 @@ import com.nxp.example.smartgreenhouse.views.menu.MenuContainer;
 import com.nxp.example.smartgreenhouse.views.overview.FooterOverview;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
 import com.nxp.example.smartgreenhouse.views.overview.Overview;
+import com.nxp.example.smartgreenhouse.views.wifi.WifiAuthenticationContainer;
 import com.nxp.example.smartgreenhouse.views.wifi.WifiContainer;
 import ej.annotation.NonNullByDefault;
 import ej.microui.display.Display;
@@ -26,6 +27,7 @@ public class MainPage extends Container {
     private final Overview overview;
     private final FooterOverview footerOverview;
     private final WifiContainer wifiContainer;
+    private final WifiAuthenticationContainer wifiAuthenticationContainer;
     private final MenuContainer menuContainer;
     private final SensorDetail sensorDetail;
     private final ActuatorDetail actuatorDetail;
@@ -35,6 +37,7 @@ public class MainPage extends Container {
 
     private boolean menuOpen;
     private boolean wifiOpen;
+    private boolean wifiAuthenticationOpen;
     private boolean sensorDetailOpen;
     private boolean actuatorDetailOpen;
 
@@ -44,6 +47,7 @@ public class MainPage extends Container {
 
         this.menuOpen = false;
         this.wifiOpen = false;
+        this.wifiAuthenticationOpen = false;
         this.sensorDetailOpen = false;
 
         this.headerOverview = new HeaderOverview();
@@ -52,6 +56,8 @@ public class MainPage extends Container {
         this.indicator = new Indicator();
         this.footerOverview = new FooterOverview();
         this.wifiContainer = new WifiContainer();
+        this.wifiAuthenticationContainer = new WifiAuthenticationContainer();
+        this.wifiAuthenticationContainer.setEnabled(false);
         this.menuContainer = new MenuContainer();
 
         this.sensorDetail = new SensorDetail();
@@ -67,6 +73,7 @@ public class MainPage extends Container {
         addChild(indicator);
         addChild(footerOverview);
         addChild(wifiContainer);
+        addChild(wifiAuthenticationContainer);
         addChild(menuContainer);
 
         addChild(sensorDetail);
@@ -75,6 +82,22 @@ public class MainPage extends Container {
 
     public void setOnWifiClick(HeaderOverview.onWifiClickListener onWifiClick) {
         this.headerOverview.setOnWifiClickListener(onWifiClick);
+    }
+
+    public void setOnWifiRefreshClick(WifiContainer.OnRefreshClickListener listener) {
+        this.wifiContainer.setOnRefreshClickListener(listener);
+    }
+
+    public void setOnWifiNetworkClick(WifiContainer.OnWifiNetworkClickListener listener) {
+        this.wifiContainer.setOnWifiNetworkClickListener(listener);
+    }
+
+    public void setOnWifiAuthenticationBackClick(WifiAuthenticationContainer.OnAuthenticationBackClickListener listener) {
+        this.wifiAuthenticationContainer.setOnAuthenticationBackClickListener(listener);
+    }
+
+    public void setOnWifiConnectClick(WifiAuthenticationContainer.OnWifiConnectClickListener listener) {
+        this.wifiAuthenticationContainer.setOnWifiConnectClickListener(listener);
     }
 
     public void setOnOverviewSwipeListener(HorizontalSwipeListener horizontalSwipeListener) {
@@ -117,12 +140,24 @@ public class MainPage extends Container {
         this.actuatorDetail.setOnSwipeListener(listener);
     }
 
+    public void showWifiScanning() {
+        this.wifiContainer.showScanning();
+    }
+
+    public void stopWifiScanning() {
+        this.wifiContainer.stopScanning();
+    }
+
     public void updateWifiNetworks(WifiNetwork[] networks) {
         this.wifiContainer.setNetworks(networks);
     }
 
     public void updateTime(String time) {
         this.headerOverview.setTime(time);
+    }
+
+    public void updateWifiConnectionStatus(boolean connected) {
+        this.headerOverview.setWifiConnected(connected);
     }
 
     public void updateTrayLabel(String text) {
@@ -198,6 +233,82 @@ public class MainPage extends Container {
     public void closeWifi() {
         this.wifiOpen = false;
         requestLayOut();
+    }
+
+    public boolean isWifiAuthenticationOpen() {
+        return this.wifiAuthenticationOpen;
+    }
+
+    public void openWifiAuthentication(WifiNetwork network) {
+        this.menuOpen = false;
+        this.wifiOpen = false;
+
+        this.sensorDetailOpen = false;
+        this.actuatorDetailOpen = false;
+
+        this.wifiAuthenticationOpen = true;
+
+        this.wifiContainer.setEnabled(false);
+        this.menuContainer.setEnabled(false);
+
+        this.sensorDetail.setEnabled(false);
+        this.actuatorDetail.setEnabled(false);
+
+        this.headerOverview.setEnabled(false);
+        this.overview.setEnabled(false);
+        this.footerOverview.setEnabled(false);
+
+        this.wifiAuthenticationContainer.setEnabled(true);
+
+        this.wifiAuthenticationContainer.open(network);
+
+        requestLayOut();
+        requestRender();
+    }
+
+    public void showWifiConnecting() {
+        if (!this.wifiAuthenticationOpen) {
+            return;
+        }
+        this.wifiAuthenticationContainer.showConnecting();
+    }
+
+    public void closeWifiAuthenticationToList() {
+        this.wifiAuthenticationOpen = false;
+
+        this.wifiAuthenticationContainer.close();
+        this.wifiAuthenticationContainer.setEnabled(false);
+
+        this.headerOverview.setEnabled(true);
+        this.overview.setEnabled(true);
+        this.footerOverview.setEnabled(true);
+
+        this.menuContainer.setEnabled(true);
+        this.wifiContainer.setEnabled(true);
+
+        this.wifiOpen = true;
+
+        requestLayOut();
+        requestRender();
+    }
+
+    public void closeWifiAfterConnectionSuccess() {
+        this.wifiAuthenticationOpen = false;
+        this.wifiOpen = false;
+        this.menuOpen = false;
+
+        this.wifiAuthenticationContainer.close();
+        this.wifiAuthenticationContainer.setEnabled(false);
+
+        this.wifiContainer.setEnabled(true);
+
+        this.headerOverview.setEnabled(true);
+        this.overview.setEnabled(true);
+        this.footerOverview.setEnabled(true);
+        this.menuContainer.setEnabled(true);
+
+        requestLayOut();
+        requestRender();
     }
 
     public void openSensorDetail() {
@@ -306,6 +417,12 @@ public class MainPage extends Container {
         int wifiY = this.wifiOpen ? headerHeight : contentHeight;
         layOutChild(this.wifiContainer, wifiX, wifiY, wifiWidth, wifiHeight);
 
+        int authenticationWidth = this.wifiAuthenticationContainer.getAuthenticationFrameWidth();
+        int authenticationHeight = this.wifiAuthenticationContainer.getAuthenticationFrameHeight();
+        int authenticationX = contentWidth - authenticationWidth - marginWifiFrame;
+        int authenticationY = this.wifiAuthenticationOpen ? headerHeight : contentHeight;
+        layOutChild(this.wifiAuthenticationContainer, authenticationX, authenticationY, authenticationWidth, authenticationHeight);
+
         int menuWidth = this.menuContainer.getMenuWidth();
         int menuHeight = this.menuContainer.getMenuHeight();
         int menuX = (contentWidth - menuWidth) / 2;
@@ -350,6 +467,8 @@ public class MainPage extends Container {
 
         computeChildOptimalSize(this.sensorDetail, displayWidth, displayHeight);
         computeChildOptimalSize(this.actuatorDetail, displayWidth, displayHeight);
+
+        computeChildOptimalSize(this.wifiAuthenticationContainer, this.wifiAuthenticationContainer.getAuthenticationFrameWidth(), this.wifiAuthenticationContainer.getAuthenticationFrameHeight());
 
         size.setSize(displayWidth, displayHeight);
     }
