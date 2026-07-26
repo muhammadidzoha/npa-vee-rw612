@@ -281,6 +281,22 @@ public class MainPage extends Container {
         this.wifiAuthenticationContainer.stopConnecting();
     }
 
+    public void showWifiAuthenticationError(String message) {
+        if (!this.wifiAuthenticationOpen) {
+            return;
+        }
+
+        this.wifiAuthenticationContainer.showError(message);
+    }
+
+    public void clearWifiAuthenticationError() {
+        if (!this.wifiAuthenticationOpen) {
+            return;
+        }
+
+        this.wifiAuthenticationContainer.clearError();
+    }
+
     public void closeWifiAuthenticationToList() {
         this.wifiAuthenticationOpen = false;
 

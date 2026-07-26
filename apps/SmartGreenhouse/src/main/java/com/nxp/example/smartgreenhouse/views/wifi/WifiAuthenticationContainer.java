@@ -53,6 +53,8 @@ public final class WifiAuthenticationContainer extends Container {
 
     private static final int PASSWORD_TO_KEYBOARD_GAP = 8;
 
+    private static final int ERROR_TEXT_GAP = 3;
+
     private static final int KEYBOARD_HORIZONTAL_MARGIN = 12;
     private static final int KEYBOARD_TO_BUTTON_GAP = 8;
 
@@ -67,6 +69,7 @@ public final class WifiAuthenticationContainer extends Container {
     private final ImageButton connectButton;
     private final CircularProgress connectingProgress;
     private boolean connecting;
+    private String errorMessage;
 
     private WifiNetwork network;
 
@@ -104,6 +107,8 @@ public final class WifiAuthenticationContainer extends Container {
 
         this.connectingProgress = new CircularProgress();
         this.connecting = false;
+
+        this.errorMessage = "";
 
         this.network = null;
 
@@ -157,10 +162,34 @@ public final class WifiAuthenticationContainer extends Container {
         this.onWifiConnectClickListener = listener;
     }
 
+    public void showError(String message) {
+        if (message == null) {
+            this.errorMessage = "";
+        } else {
+            this.errorMessage = message;
+        }
+
+        requestLayOut();
+        requestRender();
+    }
+
+    public void clearError() {
+        if (this.errorMessage.length() == 0) {
+            return;
+        }
+
+        this.errorMessage = "";
+
+        requestLayOut();
+        requestRender();
+    }
+
     public void showConnecting() {
         if (this.connecting) {
             return;
         }
+
+        clearError();
 
         this.connecting = true;
 
@@ -199,6 +228,7 @@ public final class WifiAuthenticationContainer extends Container {
 
         this.connecting = false;
         this.connectingProgress.stop();
+        this.errorMessage = "";
 
         this.passwordField.clear();
 
@@ -217,6 +247,7 @@ public final class WifiAuthenticationContainer extends Container {
     public void close() {
         this.connecting = false;
         this.connectingProgress.stop();
+        this.errorMessage = "";
 
         this.keyboard.deactivate();
         this.passwordField.clear();
@@ -245,6 +276,7 @@ public final class WifiAuthenticationContainer extends Container {
     protected void layOutChildren(int contentWidth, int contentHeight) {
         Font titleFont = Fonts.jetbrainsMonoBold12px();
         Font networkFont = Fonts.jetbrainsMonoBold16px();
+        Font errorFont = Fonts.jetbrainsMonoRegular8px();
 
         int networkY = TITLE_Y + titleFont.getHeight() + TITLE_TO_NETWORK_GAP;
         int passwordY = networkY + networkFont.getHeight() + NETWORK_TO_PASSWORD_GAP;
@@ -255,8 +287,14 @@ public final class WifiAuthenticationContainer extends Container {
         int connectButtonX = (contentWidth - connectButtonWidth) / 2;
         int connectButtonY = contentHeight - connectButtonHeight - CONNECT_BUTTON_BOTTOM_MARGIN;
 
+        int errorAreaHeight = 0;
+
+        if (this.errorMessage.length() > 0) {
+            errorAreaHeight = errorFont.getHeight() + ERROR_TEXT_GAP;
+        }
+
         int keyboardX = KEYBOARD_HORIZONTAL_MARGIN;
-        int keyboardY = passwordY + PASSWORD_FIELD_HEIGHT + PASSWORD_TO_KEYBOARD_GAP;
+        int keyboardY = passwordY + PASSWORD_FIELD_HEIGHT + PASSWORD_TO_KEYBOARD_GAP + errorAreaHeight;
         int keyboardWidth = contentWidth - KEYBOARD_HORIZONTAL_MARGIN * 2;
         int keyboardHeight = connectButtonY - KEYBOARD_TO_BUTTON_GAP - keyboardY;
         if (keyboardHeight < 40) {
@@ -268,19 +306,17 @@ public final class WifiAuthenticationContainer extends Container {
             layOutChild(this.passwordField, HORIZONTAL_MARGIN, contentHeight, passwordWidth, PASSWORD_FIELD_HEIGHT);
             layOutChild(this.keyboard, keyboardX, contentHeight, keyboardWidth, keyboardHeight);
             layOutChild(this.connectButton, connectButtonX, contentHeight, connectButtonWidth, connectButtonHeight);
-
             Font connectingFont = Fonts.jetbrainsMonoRegular8px();
+
             int groupHeight = CONNECTING_PROGRESS_SIZE + CONNECTING_TEXT_GAP + connectingFont.getHeight();
             int contentStartY = networkY + networkFont.getHeight() + NETWORK_TO_PASSWORD_GAP;
-            int availableHeight = contentHeight - contentStartY;
 
+            int availableHeight = contentHeight - contentStartY;
             int progressX = (contentWidth - CONNECTING_PROGRESS_SIZE) / 2;
             int progressY = contentStartY + (availableHeight - groupHeight) / 2;
-
             layOutChild(this.connectingProgress, progressX, progressY, CONNECTING_PROGRESS_SIZE, CONNECTING_PROGRESS_SIZE);
             return;
         }
-
         layOutChild(this.backButton, BACK_BUTTON_X, BACK_BUTTON_Y, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE);
         layOutChild(this.passwordField, HORIZONTAL_MARGIN, passwordY, passwordWidth, PASSWORD_FIELD_HEIGHT);
         layOutChild(this.keyboard, keyboardX, keyboardY, keyboardWidth, keyboardHeight);
@@ -322,6 +358,16 @@ public final class WifiAuthenticationContainer extends Container {
         int networkX = (contentWidth - networkWidth) / 2;
         int networkY = TITLE_Y + titleFont.getHeight() + TITLE_TO_NETWORK_GAP;
         Painter.drawString(g, networkName, networkFont, networkX, networkY);
+
+        if (!this.connecting && !this.errorMessage.isEmpty()) {
+            Font errorFont = Fonts.jetbrainsMonoRegular8px();
+            String visibleError = fitText(this.errorMessage, errorFont, contentWidth - HORIZONTAL_MARGIN * 2);
+            int errorWidth = errorFont.stringWidth(visibleError);
+            int errorX = (contentWidth - errorWidth) / 2;
+            int errorY = this.passwordField.getY() + PASSWORD_FIELD_HEIGHT + ERROR_TEXT_GAP;
+            g.setColor(ApplicationColors.RED);
+            Painter.drawString(g, visibleError, errorFont, errorX, errorY);
+        }
 
         if (this.connecting) {
             Font connectingFont = Fonts.jetbrainsMonoRegular8px();
