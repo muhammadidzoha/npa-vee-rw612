@@ -185,6 +185,8 @@ public final class Keyboard extends Container {
         setShiftKey(THIRD_ROW, 0, false);
 
         setMappingKey(FOURTH_ROW, 0, Mapping.NUMERIC);
+
+        requestLayOut();
     }
 
     private void setUpperCaseMapping() {
@@ -193,6 +195,8 @@ public final class Keyboard extends Container {
         setShiftKey(THIRD_ROW, 0, true);
 
         setMappingKey(FOURTH_ROW, 0, Mapping.NUMERIC);
+
+        requestLayOut();
     }
 
     private void setNumericMapping() {
@@ -201,6 +205,8 @@ public final class Keyboard extends Container {
         setMappingKey(THIRD_ROW, 0, Mapping.SYMBOL);
 
         setMappingKey(FOURTH_ROW, 0, Mapping.ABC);
+
+        requestLayOut();
     }
 
     private void setSymbolMapping() {
@@ -209,6 +215,8 @@ public final class Keyboard extends Container {
         setMappingKey(THIRD_ROW, 0, Mapping.NUMERIC);
 
         setMappingKey(FOURTH_ROW, 0, Mapping.ABC);
+
+        requestLayOut();
     }
 
     private void setMapping(int layoutId) {
@@ -238,9 +246,6 @@ public final class Keyboard extends Container {
         setStandardKey(FOURTH_ROW, RIGHT_KEY_INDEX, ">", ControlCharacters.VK_RIGHT);
 
         setBlankKey(FOURTH_ROW, SPECIAL_KEY_INDEX);
-
-        requestLayOut();
-        requestRender();
     }
 
     private Key getKey(int row, int index) {
@@ -265,15 +270,15 @@ public final class Keyboard extends Container {
     }
 
     private void setStandardKey(int row, int index, String displayedText, char character) {
-        getKey(row, index).setStandard(displayedText, character);
+        getKey(row, index).setStandard(displayedText, character, false);
     }
 
     private void setBlankKey(int row, int index) {
-        getKey(row, index).setBlank();
+        getKey(row, index).setBlank(false);
     }
 
     private void setSpaceKey(int row, int index) {
-        getKey(row, index).setStandard(" ", ControlCharacters.SPACE, this.spaceKeySelector);
+        getKey(row, index).setStandard(" ", ControlCharacters.SPACE, this.spaceKeySelector, false);
     }
 
     private void setShiftKey(int row, int index, final boolean activeShift) {
@@ -291,7 +296,7 @@ public final class Keyboard extends Container {
 
         int selector = activeShift ? this.shiftKeyActiveSelector : this.shiftKeyInactiveSelector;
 
-        getKey(row, index).setSpecial("^", listener, selector);
+        getKey(row, index).setSpecial("^", listener, selector, false);
     }
 
     private void setMappingKey(int row, int index, final Mapping mapping) {
@@ -315,7 +320,7 @@ public final class Keyboard extends Container {
                     }
                 };
 
-        getKey(row, index).setSpecial(mapping.getText(), listener, this.switchMappingKeySelector);
+        getKey(row, index).setSpecial(mapping.getText(), listener, this.switchMappingKeySelector, false);
     }
 
     @Override

@@ -44,9 +44,14 @@ public final class Key extends Label {
     }
 
     public void setStandard(String displayedText, final char character) {
+        setStandard(displayedText, character, true);
+    }
+
+    void setStandard(String displayedText, final char character, boolean requestUpdate) {
         setEnabled(true);
 
         setText(displayedText);
+
         this.onClickListener =
                 new OnClickListener() {
                     @Override
@@ -59,16 +64,27 @@ public final class Key extends Label {
 
         removeAllClassSelectors();
 
-        requestLayOut();
-        requestRender();
+        requestUpdate(requestUpdate);
     }
 
     public void setStandard(String displayedText, char character, int classSelector) {
-        setStandard(displayedText, character);
+        setStandard(displayedText, character, classSelector, true);
+    }
+
+    void setStandard(String displayedText, char character, int classSelector, boolean requestUpdate) {
+
+        setStandard(displayedText, character, false);
+
         addClassSelector(classSelector);
+
+        requestUpdate(requestUpdate);
     }
 
     public void setSpecial(String displayedText, OnClickListener listener) {
+        setSpecial(displayedText, listener, true);
+    }
+
+    void setSpecial(String displayedText, OnClickListener listener, boolean requestUpdate) {
         setEnabled(true);
 
         setText(displayedText);
@@ -78,16 +94,24 @@ public final class Key extends Label {
 
         removeAllClassSelectors();
 
-        requestLayOut();
-        requestRender();
+        requestUpdate(requestUpdate);
     }
 
     public void setSpecial(String displayedText, OnClickListener listener, int classSelector) {
-        setSpecial(displayedText, listener);
+        setSpecial(displayedText, listener, classSelector, true);
+    }
+
+    void setSpecial(String displayedText, OnClickListener listener, int classSelector, boolean requestUpdate) {
+        setSpecial(displayedText, listener, false);
         addClassSelector(classSelector);
+        requestUpdate(requestUpdate);
     }
 
     public void setBlank() {
+        setBlank(true);
+    }
+
+    void setBlank(boolean requestUpdate) {
         stopRepeatTask();
 
         this.pressed = false;
@@ -100,7 +124,14 @@ public final class Key extends Label {
         removeAllClassSelectors();
 
         updateStyle();
-        requestRender();
+
+        requestUpdate(requestUpdate);
+    }
+
+    private void requestUpdate(boolean requestUpdate) {
+        if (requestUpdate) {
+            requestLayOut();
+        }
     }
 
     @Override
