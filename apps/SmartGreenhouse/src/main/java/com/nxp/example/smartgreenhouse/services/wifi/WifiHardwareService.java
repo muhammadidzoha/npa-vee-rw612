@@ -1,6 +1,7 @@
 package com.nxp.example.smartgreenhouse.services.wifi;
 
 import com.nxp.example.smartgreenhouse.models.wifi.WifiNetwork;
+import com.nxp.example.smartgreenhouse.models.wifi.WifiScanResult;
 
 import ej.ecom.wifi.AccessPoint;
 import ej.ecom.wifi.SecurityMode;
@@ -22,49 +23,50 @@ public final class WifiHardwareService {
         this.wifiManager = WifiManager.getInstance();
     }
 
-    public WifiCapability getCapability() throws IOException {
-        return this.wifiManager
-                .getCapability();
+    public synchronized WifiCapability getCapability() throws IOException {
+        return this.wifiManager.getCapability();
     }
 
-    public WifiNetwork[] scan() throws IOException {
-        LOGGER.log(Level.INFO, "Before WifiManager.getJoined()");
-
-        AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
-
-        LOGGER.log(Level.INFO, "After WifiManager.getJoined()");
+    public synchronized WifiScanResult scan() throws IOException {
 
         LOGGER.log(Level.INFO, "Before WifiManager.scan(false)");
 
         AccessPoint[] accessPoints = this.wifiManager.scan(false);
-
         LOGGER.log(Level.INFO, "After WifiManager.scan(false)" + " | count: " + accessPoints.length);
+        LOGGER.log(Level.INFO, "Before WifiManager.getJoined() after scan");
+
+        AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
+        LOGGER.log(Level.INFO, "After WifiManager.getJoined() after scan");
 
         WifiNetwork[] networks = new WifiNetwork[accessPoints.length];
-
         for (int i = 0; i < accessPoints.length; i++) {
             AccessPoint accessPoint = accessPoints[i];
-            String ssid = accessPoint.getSSID();
+            if (accessPoint == null) {
+                continue;
+            }
 
+            String ssid = accessPoint.getSSID();
             if (ssid == null || ssid.length() == 0) {
                 continue;
             }
 
             SecurityMode securityMode = accessPoint.getSecurityMode();
-
             if (securityMode == null) {
                 securityMode = SecurityMode.UNKNOWN;
             }
 
             boolean secured = securityMode != SecurityMode.OPEN;
-            boolean connected = isSameAccessPoint(joinedAccessPoint, accessPoint);
+            boolean networkConnected = isSameAccessPoint(joinedAccessPoint, accessPoint);
 
-            networks[i] = new WifiNetwork(ssid, accessPoint.getRSSI(), secured, connected, accessPoint, securityMode);
+            networks[i] = new WifiNetwork(ssid, accessPoint.getRSSI(), secured, networkConnected, accessPoint, securityMode);
         }
 
-        LOGGER.log(Level.INFO, "WifiHardwareService scan completed");
+        WifiNetwork[] validNetworks = removeNullNetworks(networks);
 
-        return removeNullNetworks(networks);
+        boolean connected = joinedAccessPoint != null;
+        LOGGER.log(Level.INFO, "WifiHardwareService scan completed" + " | networks: " + validNetworks.length + " | connected: " + connected);
+
+        return new WifiScanResult(validNetworks, connected);
     }
 
     private static WifiNetwork[] removeNullNetworks(WifiNetwork[] networks) {
@@ -90,24 +92,23 @@ public final class WifiHardwareService {
         return result;
     }
 
-    public boolean connect(WifiNetwork network, String password) throws IOException {
+    public synchronized boolean connect(WifiNetwork network, String password) throws IOException {
         if (network == null) {
             throw new IllegalArgumentException("WifiNetwork tidak boleh null.");
         }
 
         AccessPoint accessPoint = network.getAccessPoint();
-
         if (accessPoint == null) {
             throw new IllegalArgumentException("AccessPoint asli tidak tersedia.");
         }
 
         SecurityMode securityMode = network.getSecurityMode();
-
         if (securityMode == null) {
             securityMode = SecurityMode.UNKNOWN;
         }
 
         String passphrase = password == null ? "" : password;
+
         if (securityMode == SecurityMode.OPEN) {
             passphrase = "";
         } else {
@@ -121,15 +122,15 @@ public final class WifiHardwareService {
         return isSameAccessPoint(joinedAccessPoint, accessPoint);
     }
 
-    public void disconnect() throws IOException {
+    public synchronized void disconnect() throws IOException {
         this.wifiManager.leave();
     }
 
-    public boolean isConnected() throws IOException {
+    public synchronized boolean isConnected() throws IOException {
         return this.wifiManager.getJoined() != null;
     }
 
-    public String getConnectedSsid() throws IOException {
+    public synchronized String getConnectedSsid() throws IOException {
         AccessPoint accessPoint = this.wifiManager.getJoined();
 
         if (accessPoint == null) {
@@ -142,7 +143,9 @@ public final class WifiHardwareService {
     private static void validatePassword(String password) {
         int length = password.length();
 
-        if (length < 8 || length > 64) {throw new IllegalArgumentException("Password Wi-Fi harus terdiri " + "dari 8 sampai 64 karakter.");}
+        if (length < 8 || length > 64) {
+            throw new IllegalArgumentException("Password Wi-Fi harus terdiri " + "dari 8 sampai 64 karakter.");
+        }
     }
 
     private static boolean isSameAccessPoint(AccessPoint first, AccessPoint second) {
@@ -152,7 +155,6 @@ public final class WifiHardwareService {
 
         String firstSsid = first.getSSID();
         String secondSsid = second.getSSID();
-
         if (firstSsid == null || secondSsid == null) {
             return false;
         }

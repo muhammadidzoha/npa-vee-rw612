@@ -113,6 +113,12 @@
 /** @brief Max number of entries which can be used to store Wi-Fi scan results */
 #define WIFI_RW610_MAX_AP_SCAN_COUNT	CONFIG_MAX_AP_ENTRIES
 
+#define WIFI_RW610_SCAN_RESULT_LIMIT 16U
+
+#if WIFI_RW610_SCAN_RESULT_LIMIT > WIFI_RW610_MAX_AP_SCAN_COUNT
+#error "WIFI_RW610_SCAN_RESULT_LIMIT exceeds native scan buffer capacity"
+#endif
+
 #define WIFI_RW610_SYNC_TIMEOUT_MS portMAX_DELAY
 
 /* IP Address of Wi-Fi interface in AP (Access Point) mode */
@@ -287,41 +293,124 @@ int wlan_event_callback(enum wlan_event_reason reason, void *data)
     return 0;
 }
 
+// Isi Aslinya
+//static int wifi_scan_cb(unsigned count)
+//{
+//    int i;
+//    int err;
+//
+//    WIFI_RW610_DEBUG_TRACE("\n%u network%s found:\n", count, (count <= 1) ? " was" : "s were");
+//
+//    if(count > WIFI_RW610_MAX_AP_SCAN_COUNT){
+//    	WIFI_RW610_DEBUG_TRACE("Error: not enough space to store scan results (count: %d / nb entries: %d)\n", count, WIFI_RW610_MAX_AP_SCAN_COUNT);
+//    	xEventGroupSetBits(wifi_rw610_sync_event, WIFI_RW610_SCAN_GROUP);
+//    	return 0;
+//    } else {
+//		available_ap_count = count;
+//    }
+//
+//    struct wlan_scan_result *res = NULL;
+//    for (i = 0; i < count; i++){
+//    	res = &_available_ap_list[i];
+//        err = wlan_get_scan_result(i, res);
+//        if(0 != err){
+//        	WIFI_RW610_DEBUG_TRACE("Error: can't get scan res %d\n", i);
+//            continue;
+//        }
+//
+//        WIFI_RW610_DEBUG_TRACE(" #%-3d", i + 1);
+//        WIFI_RW610_DEBUG_TRACE(MAC_FORMAT, res->bssid[0], res->bssid[1], res->bssid[2], res->bssid[3], res->bssid[4], res->bssid[5]);
+//
+//        if(res->ssid[0] != '\0'){
+//        	WIFI_RW610_DEBUG_TRACE("\"%s\"\n", res->ssid);
+//        } else {
+//        	WIFI_RW610_DEBUG_TRACE("(hidden)\n");
+//        }
+//    }
+//
+//    xEventGroupSetBits(wifi_rw610_sync_event, WIFI_RW610_SCAN_GROUP);
+//    return 0;
+//}
+
 static int wifi_scan_cb(unsigned count)
 {
-    int i;
+    unsigned scan_index;
+    unsigned scannable_count;
     int err;
 
-    WIFI_RW610_DEBUG_TRACE("\n%u network%s found:\n", count, (count <= 1) ? " was" : "s were");
+    scannable_count = count;
 
-    if(count > WIFI_RW610_MAX_AP_SCAN_COUNT){
-    	WIFI_RW610_DEBUG_TRACE("Error: not enough space to store scan results (count: %d / nb entries: %d)\n", count, WIFI_RW610_MAX_AP_SCAN_COUNT);
-    	xEventGroupSetBits(wifi_rw610_sync_event, WIFI_RW610_SCAN_GROUP);
-    	return 0;
-    } else {
-		available_ap_count = count;
+    if (scannable_count > WIFI_RW610_MAX_AP_SCAN_COUNT)
+    {
+        scannable_count = WIFI_RW610_MAX_AP_SCAN_COUNT;
     }
 
-    struct wlan_scan_result *res = NULL;
-    for (i = 0; i < count; i++){
-    	res = &_available_ap_list[i];
-        err = wlan_get_scan_result(i, res);
-        if(0 != err){
-        	WIFI_RW610_DEBUG_TRACE("Error: can't get scan res %d\n", i);
+    memset(
+        _available_ap_list,
+        0,
+        sizeof(_available_ap_list)
+    );
+
+    available_ap_count = 0;
+
+    for (
+        scan_index = 0;
+        scan_index < scannable_count
+            && available_ap_count
+                < (int32_t)WIFI_RW610_SCAN_RESULT_LIMIT;
+        scan_index++
+    )
+    {
+        struct wlan_scan_result *result =
+            &_available_ap_list[available_ap_count];
+
+        err = wlan_get_scan_result(
+            scan_index,
+            result
+        );
+
+        if (err != 0)
+        {
+            memset(
+                result,
+                0,
+                sizeof(*result)
+            );
+
+            WIFI_RW610_DEBUG_TRACE(
+                "Error: can't get scan result %u\n",
+                scan_index
+            );
+
             continue;
         }
 
-        WIFI_RW610_DEBUG_TRACE(" #%-3d", i + 1);
-        WIFI_RW610_DEBUG_TRACE(MAC_FORMAT, res->bssid[0], res->bssid[1], res->bssid[2], res->bssid[3], res->bssid[4], res->bssid[5]);
+        if (result->ssid[0] == '\0')
+        {
+            memset(
+                result,
+                0,
+                sizeof(*result)
+            );
 
-        if(res->ssid[0] != '\0'){
-        	WIFI_RW610_DEBUG_TRACE("\"%s\"\n", res->ssid);
-        } else {
-        	WIFI_RW610_DEBUG_TRACE("(hidden)\n");
+            continue;
         }
+
+        available_ap_count++;
     }
 
-    xEventGroupSetBits(wifi_rw610_sync_event, WIFI_RW610_SCAN_GROUP);
+    WIFI_RW610_INFO_TRACE(
+        "Wi-Fi scan callback completed: %ld/%u "
+        "visible networks stored\n",
+        (long)available_ap_count,
+        count
+    );
+
+    xEventGroupSetBits(
+        wifi_rw610_sync_event,
+        WIFI_RW610_SCAN_GROUP
+    );
+
     return 0;
 }
 

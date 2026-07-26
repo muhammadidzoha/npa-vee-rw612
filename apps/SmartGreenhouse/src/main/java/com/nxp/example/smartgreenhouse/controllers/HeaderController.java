@@ -1,12 +1,14 @@
 package com.nxp.example.smartgreenhouse.controllers;
 
 import com.nxp.example.smartgreenhouse.models.wifi.WifiNetwork;
+import com.nxp.example.smartgreenhouse.models.wifi.WifiScanResult;
 import com.nxp.example.smartgreenhouse.services.wifi.WifiHardwareService;
 import com.nxp.example.smartgreenhouse.utils.Time;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
 import com.nxp.example.smartgreenhouse.views.wifi.WifiAuthenticationContainer;
 import com.nxp.example.smartgreenhouse.views.wifi.WifiContainer;
+
 import ej.bon.Timer;
 import ej.bon.TimerTask;
 import ej.ecom.wifi.WifiCapability;
@@ -15,13 +17,13 @@ import ej.microui.MicroUI;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+
 public class HeaderController implements
         HeaderOverview.onWifiClickListener,
         WifiContainer.OnRefreshClickListener,
         WifiContainer.OnWifiNetworkClickListener,
         WifiAuthenticationContainer.OnAuthenticationBackClickListener,
-        WifiAuthenticationContainer.OnWifiConnectClickListener
-{
+        WifiAuthenticationContainer.OnWifiConnectClickListener {
 
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: HEADER CONTROLLER]");
 
@@ -38,8 +40,8 @@ public class HeaderController implements
     public HeaderController(MainPage mainPage) {
         this.mainPage = mainPage;
         this.wifiService = new WifiHardwareService();
-
         this.wifiScanRunning = false;
+
         this.wifiConnectionRunning = false;
 
         this.clockTimer = null;
@@ -49,11 +51,14 @@ public class HeaderController implements
 
     public void init() {
         startClock();
+
         this.mainPage.setOnWifiClick(this);
         this.mainPage.setOnWifiRefreshClick(this);
         this.mainPage.setOnWifiNetworkClick(this);
+
         this.mainPage.setOnWifiAuthenticationBackClick(this);
         this.mainPage.setOnWifiConnectClick(this);
+
         checkWifiHardware();
     }
 
@@ -61,6 +66,7 @@ public class HeaderController implements
     public void onClicked() {
         if (this.mainPage.isWifiOpen()) {
             this.wifiScanRequestId++;
+
             this.mainPage.stopWifiScanning();
             this.mainPage.closeWifi();
 
@@ -107,7 +113,7 @@ public class HeaderController implements
             return;
         }
 
-        if (this.wifiConnectionRunning) {
+        if (this.wifiConnectionRunning || this.wifiScanRunning) {
             return;
         }
 
@@ -117,7 +123,6 @@ public class HeaderController implements
 
         if (network.isSecured()) {
             int passwordLength = password == null ? 0 : password.length();
-
             if (passwordLength < 8 || passwordLength > 64) {
                 LOGGER.log(Level.WARNING, "WiFi password must contain " + "8 to 64 characters");
                 return;
@@ -130,7 +135,8 @@ public class HeaderController implements
 
         LOGGER.log(Level.INFO, "WiFi connection started" + " | SSID: " + network.getName());
 
-        Thread worker = new Thread(
+        Thread worker =
+                new Thread(
                         new Runnable() {
                             @Override
                             public void run() {
@@ -143,9 +149,7 @@ public class HeaderController implements
                                     connectionSuccessful = false;
                                     errorMessage = exception.toString();
                                 }
-
                                 final boolean success = connectionSuccessful;
-
                                 final String error = errorMessage;
                                 MicroUI.callSerially(
                                         new Runnable() {
@@ -155,15 +159,12 @@ public class HeaderController implements
                                                 if (!HeaderController.this.mainPage.isWifiAuthenticationOpen()) {
                                                     return;
                                                 }
-
                                                 if (success) {
                                                     LOGGER.log(Level.INFO, "WiFi connection successful" + " | SSID: " + network.getName());
-
                                                     HeaderController.this.mainPage.updateWifiConnectionStatus(true);
                                                     HeaderController.this.mainPage.closeWifiAfterConnectionSuccess();
                                                 } else {
                                                     LOGGER.log(Level.WARNING, "WiFi connection failed" + " | SSID: " + network.getName() + " | reason: " + error);
-
                                                     HeaderController.this.mainPage.stopWifiConnecting();
                                                     HeaderController.this.mainPage.updateWifiConnectionStatus(false);
                                                 }
@@ -178,14 +179,13 @@ public class HeaderController implements
     }
 
     private void startWifiScan() {
-        if (this.wifiScanRunning) {
+        if (this.wifiScanRunning || this.wifiConnectionRunning) {
             return;
         }
 
         final int requestId = ++this.wifiScanRequestId;
 
         this.wifiScanRunning = true;
-
         this.mainPage.showWifiScanning();
 
         LOGGER.log(Level.INFO, "WiFi scanning started");
@@ -196,10 +196,10 @@ public class HeaderController implements
                             @Override
                             public void run() {
                                 try {
-                                    final WifiNetwork[] networks = HeaderController.this.wifiService.scan();
-                                    LOGGER.log(Level.INFO, "Wifi service scan returned" + " | count: " + networks.length);
-
-                                    final boolean connected = HeaderController.this.wifiService.isConnected();
+                                    final WifiScanResult scanResult = HeaderController.this.wifiService.scan();
+                                    final WifiNetwork[] networks = scanResult.getNetworks();
+                                    final boolean connected = scanResult.isConnected();
+                                    LOGGER.log(Level.INFO, "Wifi service scan returned" + " | count: " + networks.length + " | connected: " + connected);
                                     MicroUI.callSerially(
                                             new Runnable() {
                                                 @Override
@@ -215,13 +215,13 @@ public class HeaderController implements
 
                                                     HeaderController.this.mainPage.updateWifiNetworks(networks);
                                                     HeaderController.this.mainPage.updateWifiConnectionStatus(connected);
-
                                                     LOGGER.log(Level.INFO, "WiFi scanning completed");
                                                 }
                                             }
                                     );
-
-                                } catch (final Exception exception) {
+                                } catch (
+                                        final Exception exception
+                                ) {
                                     MicroUI.callSerially(
                                             new Runnable() {
                                                 @Override
@@ -237,11 +237,13 @@ public class HeaderController implements
                         },
                         "wifi-scan"
                 );
+
         scanThread.start();
     }
 
     private void checkWifiHardware() {
-        Thread worker = new Thread(
+        Thread worker =
+                new Thread(
                         new Runnable() {
                             @Override
                             public void run() {
@@ -279,7 +281,9 @@ public class HeaderController implements
         if (this.clockTimer != null) {
             return;
         }
+
         this.clockTimer = new Timer();
+
         this.clockTimer.schedule(
                 new TimerTask() {
                     @Override
@@ -294,7 +298,9 @@ public class HeaderController implements
                                 }
                         );
                     }
-                }, 0, 1000
+                },
+                0,
+                1000
         );
     }
 }
