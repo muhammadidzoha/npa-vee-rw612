@@ -98,6 +98,44 @@
 #define RFM95_EXPECTED_VERSION 0x12U
 
 /*
+ * Ukuran payload sensor terbaru:
+ *
+ * 2 x uint8_t  = 2 byte
+ * 10 x int16_t = 20 byte
+ * Total        = 22 byte
+ */
+#define LORA_SENSOR_PAYLOAD_LENGTH 22U
+
+/*
+ * Struktur penyimpanan data LoRa terbaru di native.
+ *
+ * Ini bukan struct yang dikirim langsung melalui radio.
+ * Struct ini hanya dipakai untuk menyimpan hasil parsing.
+ */
+typedef struct
+{
+    uint8_t node_id;
+    uint8_t node_target;
+
+    int16_t soil_moisture;
+    int16_t soil_temperature;
+    int16_t conductivity;
+    int16_t soil_ph;
+    int16_t nitrogen;
+    int16_t phosphorus;
+    int16_t potassium;
+    int16_t air_temperature;
+    int16_t air_humidity;
+    int16_t light_intensity;
+
+    int32_t rssi;
+    int32_t snr_quarter_db;
+
+    uint32_t sequence;
+    bool available;
+} lora_latest_data_t;
+
+/*
  * Konfigurasi radio berdasarkan kode lama node sensor.
  *
  * Jika versi terbaru teman menggunakan 915 MHz,
@@ -222,6 +260,12 @@ static void LORA_PrintSensorPayload(
     const uint8_t *buffer,
     uint32_t length);
 
+static bool LORA_SaveLatestPayload(
+    const uint8_t *buffer,
+    uint32_t length,
+    int32_t rssi,
+    int32_t snrQuarterDb);
+
 static status_t LORA_SpiTransfer(
     uint8_t *txData,
     uint8_t *rxData,
@@ -233,6 +277,14 @@ static void BOARD_InitLcdicClock();
  *  Global variables
  ******************************************************************************/
 TaskHandle_t pvMicrojvmCreatedTask = NULL;
+
+/*
+ * Menyimpan satu paket sensor terbaru.
+ *
+ * Task LoRa menulis data ini.
+ * Native method Java nantinya membaca data ini.
+ */
+static lora_latest_data_t g_loraLatestData = {0};
 
 /*******************************************************************************
  * Code
@@ -870,6 +922,88 @@ static int16_t LORA_ReadInt16LE(
 }
 
 /**
+ * Menyimpan payload sensor terbaru ke memori native.
+ *
+ * Data mentah tetap disimpan sebagai integer.
+ * Pembagian dengan 10 dilakukan nanti di Java.
+ */
+static bool LORA_SaveLatestPayload(
+    const uint8_t *buffer,
+    uint32_t length,
+    int32_t rssi,
+    int32_t snrQuarterDb)
+{
+    if (buffer == NULL || length != LORA_SENSOR_PAYLOAD_LENGTH)
+    {
+
+        return false;
+    }
+
+    /*
+     * Task LoRa menulis data, sementara Java nantinya
+     * akan membacanya dari task MicroJVM.
+     *
+     * Critical section mencegah Java membaca ketika
+     * separuh field masih dalam proses diperbarui.
+     */
+    taskENTER_CRITICAL();
+
+    g_loraLatestData.node_id =
+        buffer[0];
+
+    g_loraLatestData.node_target =
+        buffer[1];
+
+    g_loraLatestData.soil_moisture =
+        LORA_ReadInt16LE(buffer, 2U);
+
+    g_loraLatestData.soil_temperature =
+        LORA_ReadInt16LE(buffer, 4U);
+
+    g_loraLatestData.conductivity =
+        LORA_ReadInt16LE(buffer, 6U);
+
+    g_loraLatestData.soil_ph =
+        LORA_ReadInt16LE(buffer, 8U);
+
+    g_loraLatestData.nitrogen =
+        LORA_ReadInt16LE(buffer, 10U);
+
+    g_loraLatestData.phosphorus =
+        LORA_ReadInt16LE(buffer, 12U);
+
+    g_loraLatestData.potassium =
+        LORA_ReadInt16LE(buffer, 14U);
+
+    g_loraLatestData.air_temperature =
+        LORA_ReadInt16LE(buffer, 16U);
+
+    g_loraLatestData.air_humidity =
+        LORA_ReadInt16LE(buffer, 18U);
+
+    g_loraLatestData.light_intensity =
+        LORA_ReadInt16LE(buffer, 20U);
+
+    g_loraLatestData.rssi =
+        rssi;
+
+    g_loraLatestData.snr_quarter_db =
+        snrQuarterDb;
+
+    /*
+     * Setiap paket valid menaikkan sequence.
+     */
+    g_loraLatestData.sequence++;
+
+    g_loraLatestData.available =
+        true;
+
+    taskEXIT_CRITICAL();
+
+    return true;
+}
+
+/**
  * Menampilkan paket dalam bentuk HEX dan ASCII.
  */
 static void LORA_PrintPacket(
@@ -1226,6 +1360,16 @@ static void lora_test_task(
                 (uint32_t)packetLength,
                 packetRssi,
                 packetSnrQuarterDb);
+
+            if (LORA_SaveLatestPayload(
+                    packetBuffer,
+                    (uint32_t)packetLength,
+                    packetRssi,
+                    packetSnrQuarterDb))
+            {
+                PRINTF(
+                    "[LORA] Latest sensor payload saved in native memory.\r\n");
+            }
         }
         else if (packetLength == -1)
         {
@@ -1326,14 +1470,15 @@ int main(void)
     /* Enable crypto accelerator */
     status_t status = CRYPTO_InitHardware();
     // assert(status == kStatus_Success);
-    if (status != kStatus_Success) {
-    PRINTF(
-            "CRYPTO hardware initialization failed.\r\n"
-    );
+    if (status != kStatus_Success)
+    {
+        PRINTF(
+            "CRYPTO hardware initialization failed.\r\n");
 
-    while (1) {
+        while (1)
+        {
+        }
     }
-}
 
     vTaskStartScheduler();
     for (;;)
