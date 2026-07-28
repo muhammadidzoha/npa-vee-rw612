@@ -40,6 +40,7 @@ public class AppController {
         this.menuController = new MenuController(this.mainPage, appState, this.sensorDetailController, this.actuatorDetailController);
         this.loRaHardwareService = new LoRaHardwareService(sensorDataStore, this.sensorHistoryStore, this.overviewController, this.sensorDetailController);
         this.mqttSubscribeService = new MqttSubscribeService(this.actuatorDataStore, this.actuatorDetailController);
+        this.actuatorDetailController.setMqttSubscribeService(this.mqttSubscribeService);
         this.headerController.setPeriodicTask(
                 new Runnable() {
                     @Override
@@ -52,9 +53,7 @@ public class AppController {
                 new Runnable() {
                     @Override
                     public void run() {
-                        AppController.this
-                                .mqttSubscribeService
-                                .start();
+                        AppController.this.mqttSubscribeService.start();
                     }
                 }
         );

@@ -2,6 +2,7 @@ package com.nxp.example.smartgreenhouse.controllers;
 
 import com.nxp.example.smartgreenhouse.models.actuator.*;
 import com.nxp.example.smartgreenhouse.models.menu.MenuItemData;
+import com.nxp.example.smartgreenhouse.services.mqtt.MqttSubscribeService;
 import com.nxp.example.smartgreenhouse.state.AppState;
 import com.nxp.example.smartgreenhouse.views.HorizontalSwipeListener;
 import com.nxp.example.smartgreenhouse.views.MainPage;
@@ -13,6 +14,7 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
     private final MainPage mainPage;
     private final AppState appState;
     private final ActuatorDataStore actuatorDataStore;
+    private MqttSubscribeService mqttSubscribeService;
 
     private ActuatorDisplayItem currentDisplayItem;
 
@@ -21,12 +23,17 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
         this.appState = appState;
         this.actuatorDataStore = actuatorDataStore;
         this.currentDisplayItem = null;
+        this.mqttSubscribeService = null;
     }
 
     public void init() {
         this.mainPage.setOnActuatorDetailBackListener(this);
         this.mainPage.setOnActuatorToggleRequestedListener(this);
         this.mainPage.setOnActuatorDetailSwipeListener(this);
+    }
+
+    public void setMqttSubscribeService(MqttSubscribeService mqttSubscribeService) {
+        this.mqttSubscribeService = mqttSubscribeService;
     }
 
     public void openSelectedActuator() {
@@ -96,24 +103,25 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
     }
 
     @Override
-    public void onToggleRequested(
-            boolean targetState
-    ) {
-        /*
-         * Untuk sementara toggle bersifat read-only.
-         *
-         * Jangan mengubah ActuatorDataStore di sini.
-         * Status hanya boleh berubah setelah menerima
-         * pesan MQTT pada topic status.
-         *
-         * Pada tahap publish nanti:
-         *
-         * toggle ditekan
-         * → publish perintah
-         * → perangkat aktuator memproses
-         * → status MQTT diterima
-         * → GUI berubah.
-         */
+    public void onToggleRequested(boolean targetState) {
+        if (this.currentDisplayItem == null || !this.currentDisplayItem.isValve()) {
+            return;
+        }
+
+        int trayId = this.currentDisplayItem.getTrayId();
+        ValveData valveData = this.actuatorDataStore.getValveByTrayId(trayId);
+
+        if (valveData == null) {
+            refreshSelectedActuator();
+            return;
+        }
+
+        if (this.mqttSubscribeService == null) {
+            refreshSelectedActuator();
+            return;
+        }
+
+        this.mqttSubscribeService.requestValveControl(valveData.getValveId(), targetState);
         refreshSelectedActuator();
     }
 

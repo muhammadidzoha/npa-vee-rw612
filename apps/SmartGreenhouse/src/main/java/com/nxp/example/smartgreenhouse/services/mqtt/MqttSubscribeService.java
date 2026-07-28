@@ -2,7 +2,9 @@ package com.nxp.example.smartgreenhouse.services.mqtt;
 
 import com.nxp.example.smartgreenhouse.controllers.ActuatorDetailController;
 import com.nxp.example.smartgreenhouse.models.actuator.ActuatorDataStore;
+
 import ej.microui.MicroUI;
+
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -16,7 +18,7 @@ public final class MqttSubscribeService {
 
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: MQTT SUBSCRIBE SERVICE]");
 
-    private static final String BROKER_URI = "tcp://168.110.214.70:1883";
+    private static final String BROKER_URI = "tcp://192.168.1.100:1883";
 
     private static final String CLIENT_ID = "clientku";
 
@@ -24,17 +26,17 @@ public final class MqttSubscribeService {
 
     private static final int SUBSCRIBE_QOS = 0;
 
-    private static final boolean AUTHENTICATION_ENABLED = false;
+    private static final String VALVE_STATUS_TOPIC_PREFIX = "gh01/node/255/status/valve";
 
-    private static final String USERNAME = "";
+    private static final String VALVE_CONTROL_TOPIC_PREFIX = "gh01/node/255/control/valve";
 
-    private static final String PASSWORD = "";
+    private static final int CONTROL_QOS = 0;
 
-    private MqttClient mqttClient;
+    private static final boolean CONTROL_RETAINED = false;
 
-    private boolean workerStarted;
+    private static final int MIN_VALVE_ID = 1;
 
-    private volatile boolean serviceRunning;
+    private static final int MAX_VALVE_ID = 2;
 
     private static final long CONNECTION_CHECK_INTERVAL_MS = 1000L;
 
@@ -42,11 +44,27 @@ public final class MqttSubscribeService {
 
     private static final long RECONNECT_MAX_DELAY_MS = 30000L;
 
-    private static final String VALVE_TOPIC_PREFIX = "gh01/node/255/status/valve";
+    private static final boolean AUTHENTICATION_ENABLED = false;
+
+    private static final String USERNAME = "";
+
+    private static final String PASSWORD = "";
 
     private final ActuatorDataStore actuatorDataStore;
 
     private final ActuatorDetailController actuatorDetailController;
+
+    private MqttClient mqttClient;
+
+    private boolean workerStarted;
+
+    private volatile boolean serviceRunning;
+
+    private volatile boolean subscribed;
+
+    private final boolean[] pendingValveCommands;
+
+    private final boolean[] pendingValveStates;
 
     public MqttSubscribeService(ActuatorDataStore actuatorDataStore, ActuatorDetailController actuatorDetailController) {
         if (actuatorDataStore == null) {
@@ -56,12 +74,17 @@ public final class MqttSubscribeService {
         if (actuatorDetailController == null) {
             throw new NullPointerException("actuatorDetailController tidak boleh null.");
         }
+
         this.actuatorDataStore = actuatorDataStore;
         this.actuatorDetailController = actuatorDetailController;
-
         this.mqttClient = null;
         this.workerStarted = false;
+
         this.serviceRunning = false;
+        this.subscribed = false;
+
+        this.pendingValveCommands = new boolean[MAX_VALVE_ID + 1];
+        this.pendingValveStates = new boolean[MAX_VALVE_ID + 1];
     }
 
     public synchronized void start() {
@@ -72,7 +95,6 @@ public final class MqttSubscribeService {
 
         this.workerStarted = true;
         this.serviceRunning = true;
-
         Thread mqttWorker =
                 new Thread(
                         new Runnable() {
@@ -93,73 +115,51 @@ public final class MqttSubscribeService {
         }
     }
 
-    private void connectAndSubscribeOnce() throws MqttException {
-        LOGGER.log(Level.INFO, "Connecting to MQTT broker" + " | URI=" + BROKER_URI + " | clientId=" + CLIENT_ID);
-        MqttConnectOptions connectOptions = new MqttConnectOptions();
-        connectOptions.setConnectionTimeout(10);
-        connectOptions.setKeepAliveInterval(60);
-
-        if (AUTHENTICATION_ENABLED) {
-            connectOptions.setUserName(USERNAME);
-            connectOptions.setPassword(PASSWORD.toCharArray());
-        }
-
-        this.mqttClient.connect(connectOptions);
-        LOGGER.log(Level.INFO, "MQTT broker connected" + " | URI=" + BROKER_URI + " | cleanSession=" + connectOptions.isCleanSession());
-        LOGGER.log(Level.INFO, "Subscribing to MQTT topic" + " | topic=" + TOPIC_FILTER + " | qos=" + SUBSCRIBE_QOS);
-
-        this.mqttClient.subscribe(TOPIC_FILTER, SUBSCRIBE_QOS);
-        LOGGER.log(Level.INFO, "MQTT subscription successful" + " | topic=" + TOPIC_FILTER);
-    }
-
     private void runConnectionLoop() {
         long reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
         while (this.serviceRunning) {
             try {
                 ensureClientCreated();
-                if (!this.mqttClient.isConnected()) {
+                MqttClient client = this.mqttClient;
+                if (client == null) {
+                    throw new IllegalStateException("MQTT client was not created.");
+                }
+                if (!client.isConnected()) {
+                    this.subscribed = false;
+                }
+                if (!client.isConnected() || !this.subscribed) {
                     connectAndSubscribeOnce();
                     reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
                 }
-
-                while (this.serviceRunning && this.mqttClient != null && this.mqttClient.isConnected()) {
-                    Thread.sleep(CONNECTION_CHECK_INTERVAL_MS);
+                while (this.serviceRunning && client.isConnected() && this.subscribed) {
+                    processPendingControlCommands();
+                    synchronized (this) {
+                        boolean commandPending = this.pendingValveCommands[1] || this.pendingValveCommands[2];
+                        if (this.serviceRunning && client.isConnected() && this.subscribed && !commandPending) {
+                            wait(CONNECTION_CHECK_INTERVAL_MS);
+                        }
+                    }
                 }
             } catch (InterruptedException exception) {
                 LOGGER.log(Level.WARNING, "MQTT worker was interrupted" + " | error=" + exception);
                 break;
             } catch (MqttException exception) {
-                LOGGER.log(Level.WARNING,
-                        "MQTT connection attempt failed"
-                                + " | reasonCode="
-                                + exception.getReasonCode()
-                                + " | message="
-                                + exception.getMessage()
-                                + " | cause="
-                                + exception.getCause()
-                );
+                LOGGER.log(Level.WARNING, "MQTT operation failed" + " | reasonCode=" + exception.getReasonCode() + " | message=" + exception.getMessage() + " | cause=" + exception.getCause());
             } catch (RuntimeException exception) {
-                LOGGER.log(
-                        Level.WARNING,
-                        "Unexpected MQTT worker error"
-                                + " | error="
-                                + exception
-                );
+                LOGGER.log(Level.WARNING, "Unexpected MQTT worker error" + " | error=" + exception);
             }
-
             if (!this.serviceRunning) {
                 break;
             }
-
             LOGGER.log(Level.INFO, "MQTT reconnect scheduled" + " | delayMs=" + reconnectDelay);
             try {
                 Thread.sleep(reconnectDelay);
             } catch (InterruptedException exception) {
-                LOGGER.log(Level.WARNING, "MQTT reconnect delay interrupted" + " | error=" + exception);
+                LOGGER.log(Level.WARNING, "MQTT reconnect delay was interrupted" + " | error=" + exception);
                 break;
             }
 
-            reconnectDelay *= 2L;
+            reconnectDelay = reconnectDelay * 2L;
             if (reconnectDelay > RECONNECT_MAX_DELAY_MS) {
                 reconnectDelay = RECONNECT_MAX_DELAY_MS;
             }
@@ -168,6 +168,7 @@ public final class MqttSubscribeService {
         synchronized (this) {
             this.workerStarted = false;
             this.serviceRunning = false;
+            this.subscribed = false;
         }
 
         LOGGER.log(Level.INFO, "MQTT connection worker stopped.");
@@ -183,6 +184,10 @@ public final class MqttSubscribeService {
                 new MqttCallback() {
                     @Override
                     public void connectionLost(Throwable cause) {
+                        MqttSubscribeService.this.subscribed = false;
+                        synchronized (MqttSubscribeService.this) {
+                            MqttSubscribeService.this.notifyAll();
+                        }
                         if (cause instanceof MqttException) {
                             MqttException mqttException = (MqttException) cause;
                             LOGGER.log(
@@ -194,7 +199,7 @@ public final class MqttSubscribeService {
                                             + " | message="
                                             + mqttException
                                             .getMessage()
-                                            + " | cause="
+                                            + " | rootCause="
                                             + mqttException
                                             .getCause()
                             );
@@ -221,18 +226,152 @@ public final class MqttSubscribeService {
                                         + "[MQTT] Payload : "
                                         + payloadText
                         );
+
                         handleValveStatus(topic, payloadText);
                     }
                 }
         );
     }
 
+    private void connectAndSubscribeOnce() throws MqttException {
+        MqttClient client = this.mqttClient;
+
+        if (client == null) {
+            throw new IllegalStateException("MQTT client is null.");
+        }
+
+        if (!client.isConnected()) {
+            LOGGER.log(Level.INFO, "Connecting to MQTT broker" + " | URI=" + BROKER_URI + " | clientId=" + CLIENT_ID);
+            MqttConnectOptions connectOptions = new MqttConnectOptions();
+            connectOptions.setConnectionTimeout(10);
+            connectOptions.setKeepAliveInterval(60);
+
+            if (AUTHENTICATION_ENABLED) {
+                connectOptions.setUserName(USERNAME);
+                connectOptions.setPassword(PASSWORD.toCharArray());
+            }
+
+            client.connect(connectOptions);
+            LOGGER.log(Level.INFO, "MQTT broker connected" + " | URI=" + BROKER_URI);
+        }
+
+        if (!this.subscribed) {
+            LOGGER.log(
+                    Level.INFO,
+                    "Subscribing to MQTT topic"
+                            + " | topic="
+                            + TOPIC_FILTER
+                            + " | qos="
+                            + SUBSCRIBE_QOS
+            );
+
+            client.subscribe(TOPIC_FILTER, SUBSCRIBE_QOS);
+            this.subscribed = true;
+            LOGGER.log(Level.INFO, "MQTT subscription successful" + " | topic=" + TOPIC_FILTER);
+        }
+    }
+
+    public synchronized boolean requestValveControl(int valveId, boolean targetOpen) {
+        if (valveId < MIN_VALVE_ID || valveId > MAX_VALVE_ID) {
+            LOGGER.log(Level.WARNING, "Invalid valve control request" + " | valveId=" + valveId);
+            return false;
+        }
+
+        if (this.mqttClient == null || !this.mqttClient.isConnected()) {
+            LOGGER.log(
+                    Level.WARNING,
+                    "Valve control rejected"
+                            + " | MQTT is not connected"
+                            + " | valveId="
+                            + valveId
+                            + " | target="
+                            + (targetOpen
+                            ? "ON"
+                            : "OFF")
+            );
+            return false;
+        }
+
+        this.pendingValveStates[valveId] = targetOpen;
+        this.pendingValveCommands[valveId] = true;
+        notifyAll();
+        LOGGER.log(
+                Level.INFO,
+                "[MQTT] Valve control queued"
+                        + " | valveId="
+                        + valveId
+                        + " | trayId="
+                        + valveId
+                        + " | payload="
+                        + (targetOpen
+                        ? "1"
+                        : "0")
+        );
+        return true;
+    }
+
+    private void processPendingControlCommands() throws MqttException {
+        publishPendingValveCommand(1);
+        publishPendingValveCommand(2);
+    }
+
+    private void publishPendingValveCommand(int valveId) throws MqttException {
+        final boolean commandPending;
+        final boolean targetOpen;
+
+        synchronized (this) {
+            commandPending = this.pendingValveCommands[valveId];
+            targetOpen = this.pendingValveStates[valveId];
+        }
+
+        if (!commandPending) {
+            return;
+        }
+
+        MqttClient client = this.mqttClient;
+        if (client == null || !client.isConnected()) {
+            return;
+        }
+
+        String topic = VALVE_CONTROL_TOPIC_PREFIX + valveId;
+        String payloadText = targetOpen ? "1" : "0";
+        LOGGER.log(
+                Level.INFO,
+                "[MQTT] Publishing valve control"
+                        + " | topic="
+                        + topic
+                        + " | payload="
+                        + payloadText
+                        + " | qos="
+                        + CONTROL_QOS
+                        + " | retained="
+                        + CONTROL_RETAINED
+        );
+
+        client.publish(topic, payloadText.getBytes(), CONTROL_QOS, CONTROL_RETAINED);
+        synchronized (this) {
+            if (this.pendingValveCommands[valveId] && this.pendingValveStates[valveId] == targetOpen) {
+                this.pendingValveCommands[valveId] = false;
+            }
+        }
+
+        LOGGER.log(
+                Level.INFO,
+                "[MQTT] Valve control published"
+                        + " | topic="
+                        + topic
+                        + " | payload="
+                        + payloadText
+        );
+    }
+
     private void handleValveStatus(String topic, String payloadText) {
         final int valveId = parseValveId(topic);
-        if (valveId <= 0) {
+        if (valveId < MIN_VALVE_ID || valveId > MAX_VALVE_ID) {
             LOGGER.log(Level.WARNING, "Unsupported actuator topic" + " | topic=" + topic);
             return;
         }
+
         if (payloadText == null) {
             LOGGER.log(Level.WARNING, "Empty MQTT actuator payload" + " | topic=" + topic);
             return;
@@ -240,10 +379,9 @@ public final class MqttSubscribeService {
 
         String normalizedPayload = payloadText.trim();
         final boolean open;
-
-        if ("ON".equalsIgnoreCase(normalizedPayload)) {
+        if ("ON".equalsIgnoreCase(normalizedPayload) || "1".equals(normalizedPayload)) {
             open = true;
-        } else if ("OFF".equalsIgnoreCase(normalizedPayload)) {
+        } else if ("OFF".equalsIgnoreCase(normalizedPayload) || "0".equals(normalizedPayload)) {
             open = false;
         } else {
             LOGGER.log(
@@ -256,30 +394,45 @@ public final class MqttSubscribeService {
             );
             return;
         }
+
         final long receivedTimestamp = System.currentTimeMillis();
         MicroUI.callSerially(
                 new Runnable() {
                     @Override
                     public void run() {
-                        boolean updated = MqttSubscribeService.this.actuatorDataStore.updateValveState(valveId, open, receivedTimestamp);
+                        boolean updated =
+                                MqttSubscribeService.this.actuatorDataStore.updateValveState(valveId, open, receivedTimestamp);
                         if (!updated) {
                             LOGGER.log(Level.WARNING, "Valve was not found" + " | valveId=" + valveId);
                             return;
                         }
+
                         MqttSubscribeService.this.actuatorDetailController.refreshIfOpen();
-                        LOGGER.log(Level.INFO, "[MQTT] Valve status applied" + " | valveId=" + valveId + " | trayId=" + valveId + " | state=" + (open ? "ON" : "OFF"));
+                        LOGGER.log(
+                                Level.INFO,
+                                "[MQTT] Valve status applied"
+                                        + " | valveId="
+                                        + valveId
+                                        + " | trayId="
+                                        + valveId
+                                        + " | state="
+                                        + (open
+                                        ? "ON"
+                                        : "OFF")
+                                        + " | timestamp="
+                                        + receivedTimestamp
+                        );
                     }
                 }
         );
     }
 
     private static int parseValveId(String topic) {
-        if (topic == null || !topic.startsWith(VALVE_TOPIC_PREFIX)) {
+        if (topic == null || !topic.startsWith(VALVE_STATUS_TOPIC_PREFIX)) {
             return -1;
         }
 
-        String valveIdText = topic.substring(VALVE_TOPIC_PREFIX.length());
-
+        String valveIdText = topic.substring(VALVE_STATUS_TOPIC_PREFIX.length());
         if (valveIdText.length() == 0) {
             return -1;
         }
@@ -290,6 +443,7 @@ public final class MqttSubscribeService {
                 return -1;
             }
         }
+
         try {
             return Integer.parseInt(valveIdText);
         } catch (NumberFormatException exception) {
