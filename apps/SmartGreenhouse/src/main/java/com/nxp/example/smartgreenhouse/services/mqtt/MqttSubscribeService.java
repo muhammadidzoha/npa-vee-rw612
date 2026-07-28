@@ -18,7 +18,7 @@ public final class MqttSubscribeService {
 
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: MQTT SUBSCRIBE SERVICE]");
 
-    private static final String BROKER_URI = "tcp://192.168.1.100:1883";
+    private static final String BROKER_URI = "tcp://168.110.214.70:1883";
 
     private static final String CLIENT_ID = "clientku";
 
