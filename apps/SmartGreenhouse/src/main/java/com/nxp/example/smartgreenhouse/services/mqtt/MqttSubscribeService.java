@@ -2,6 +2,7 @@ package com.nxp.example.smartgreenhouse.services.mqtt;
 
 import com.nxp.example.smartgreenhouse.controllers.ActuatorDetailController;
 import com.nxp.example.smartgreenhouse.models.actuator.ActuatorDataStore;
+import ej.microui.MicroUI;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -33,8 +34,7 @@ public final class MqttSubscribeService {
 
     private boolean startRequested;
 
-    private static final String VALVE_TOPIC_PREFIX =
-            "gh01/node/255/status/valve";
+    private static final String VALVE_TOPIC_PREFIX = "gh01/node/255/status/valve";
 
     private final ActuatorDataStore actuatorDataStore;
 
@@ -66,7 +66,6 @@ public final class MqttSubscribeService {
         }
 
         this.startRequested = true;
-
         Thread mqttWorker =
                 new Thread(
                         new Runnable() {
@@ -146,48 +145,21 @@ public final class MqttSubscribeService {
             }
 
             newClient.connect(connectOptions);
-
-            LOGGER.log(
-                    Level.INFO,
-                    "MQTT broker connected"
-                            + " | URI="
-                            + BROKER_URI
-            );
-
-            LOGGER.log(
-                    Level.INFO,
-                    "Subscribing to MQTT topic"
-                            + " | topic="
-                            + TOPIC_FILTER
-                            + " | qos="
-                            + SUBSCRIBE_QOS
-            );
+            LOGGER.log(Level.INFO, "MQTT broker connected" + " | URI=" + BROKER_URI);
+            LOGGER.log(Level.INFO, "Subscribing to MQTT topic" + " | topic=" + TOPIC_FILTER + " | qos=" + SUBSCRIBE_QOS);
 
             newClient.subscribe(TOPIC_FILTER, SUBSCRIBE_QOS);
-            LOGGER.log(
-                    Level.INFO,
-                    "MQTT subscription successful"
-                            + " | topic="
-                            + TOPIC_FILTER
-            );
-
+            LOGGER.log(Level.INFO, "MQTT subscription successful" + " | topic=" + TOPIC_FILTER);
         } catch (InterruptedException exception) {
             synchronized (this) {
                 this.startRequested =
                         false;
             }
 
-            LOGGER.log(
-                    Level.WARNING,
-                    "MQTT worker was interrupted"
-                            + " | error="
-                            + exception
-            );
-
+            LOGGER.log(Level.WARNING, "MQTT worker was interrupted" + " | error=" + exception);
         } catch (MqttException exception) {
             synchronized (this) {
-                this.startRequested =
-                        false;
+                this.startRequested = false;
             }
 
             LOGGER.log(
@@ -200,68 +172,32 @@ public final class MqttSubscribeService {
                             + " | cause="
                             + exception.getCause()
             );
-
         } catch (RuntimeException exception) {
             synchronized (this) {
-                this.startRequested =
-                        false;
+                this.startRequested = false;
             }
-
-            LOGGER.log(
-                    Level.SEVERE,
-                    "Unexpected MQTT error"
-                            + " | error="
-                            + exception
-            );
+            LOGGER.log(Level.SEVERE, "Unexpected MQTT error" + " | error=" + exception);
         }
     }
 
-    private void handleValveStatus(
-            String topic,
-            String payloadText
-    ) {
-        final int valveId =
-                parseValveId(
-                        topic
-                );
-
+    private void handleValveStatus(String topic, String payloadText) {
+        final int valveId = parseValveId(topic);
         if (valveId <= 0) {
-            LOGGER.log(
-                    Level.WARNING,
-                    "Unsupported actuator topic"
-                            + " | topic="
-                            + topic
-            );
-
+            LOGGER.log(Level.WARNING, "Unsupported actuator topic" + " | topic=" + topic);
             return;
         }
-
         if (payloadText == null) {
-            LOGGER.log(
-                    Level.WARNING,
-                    "Empty MQTT actuator payload"
-                            + " | topic="
-                            + topic
-            );
-
+            LOGGER.log(Level.WARNING, "Empty MQTT actuator payload" + " | topic=" + topic);
             return;
         }
 
-        String normalizedPayload =
-                payloadText.trim();
-
+        String normalizedPayload = payloadText.trim();
         final boolean open;
 
-        if ("ON".equalsIgnoreCase(
-                normalizedPayload
-        )) {
+        if ("ON".equalsIgnoreCase(normalizedPayload)) {
             open = true;
-
-        } else if ("OFF".equalsIgnoreCase(
-                normalizedPayload
-        )) {
+        } else if ("OFF".equalsIgnoreCase(normalizedPayload)) {
             open = false;
-
         } else {
             LOGGER.log(
                     Level.WARNING,
@@ -271,58 +207,20 @@ public final class MqttSubscribeService {
                             + " | payload="
                             + payloadText
             );
-
             return;
         }
-
-        /*
-         * Karena payload hanya berisi ON/OFF,
-         * waktu yang digunakan adalah saat pesan
-         * diterima oleh board.
-         */
-        final long receivedTimestamp =
-                System.currentTimeMillis();
-
+        final long receivedTimestamp = System.currentTimeMillis();
         MicroUI.callSerially(
                 new Runnable() {
                     @Override
                     public void run() {
-                        boolean updated =
-                                MqttSubscribeService.this
-                                        .actuatorDataStore
-                                        .updateValveState(
-                                                valveId,
-                                                open,
-                                                receivedTimestamp
-                                        );
-
+                        boolean updated = MqttSubscribeService.this.actuatorDataStore.updateValveState(valveId, open, receivedTimestamp);
                         if (!updated) {
-                            LOGGER.log(
-                                    Level.WARNING,
-                                    "Valve was not found"
-                                            + " | valveId="
-                                            + valveId
-                            );
-
+                            LOGGER.log(Level.WARNING, "Valve was not found" + " | valveId=" + valveId);
                             return;
                         }
-
-                        MqttSubscribeService.this
-                                .actuatorDetailController
-                                .refreshIfOpen();
-
-                        LOGGER.log(
-                                Level.INFO,
-                                "[MQTT] Valve status applied"
-                                        + " | valveId="
-                                        + valveId
-                                        + " | trayId="
-                                        + valveId
-                                        + " | state="
-                                        + (open
-                                        ? "ON"
-                                        : "OFF")
-                        );
+                        MqttSubscribeService.this.actuatorDetailController.refreshIfOpen();
+                        LOGGER.log(Level.INFO, "[MQTT] Valve status applied" + " | valveId=" + valveId + " | trayId=" + valveId + " | state=" + (open ? "ON" : "OFF"));
                     }
                 }
         );
@@ -345,7 +243,6 @@ public final class MqttSubscribeService {
                 return -1;
             }
         }
-
         try {
             return Integer.parseInt(valveIdText);
         } catch (NumberFormatException exception) {
