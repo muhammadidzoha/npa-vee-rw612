@@ -22,6 +22,7 @@ public class HeaderController {
     private Timer clockTimer;
 
     private Runnable periodicTask;
+    private Runnable wifiConnectedTask;
 
     private boolean wifiConnectionRunning;
 
@@ -35,6 +36,7 @@ public class HeaderController {
         this.clockTimer = null;
 
         this.periodicTask = null;
+        this.wifiConnectedTask = null;
 
         this.wifiConnectionRunning = false;
     }
@@ -47,6 +49,10 @@ public class HeaderController {
 
     public void setPeriodicTask(Runnable periodicTask) {
         this.periodicTask = periodicTask;
+    }
+
+    public void setWifiConnectedTask(Runnable wifiConnectedTask) {
+        this.wifiConnectedTask = wifiConnectedTask;
     }
 
     private void connectConfiguredWifi() {
@@ -82,6 +88,14 @@ public class HeaderController {
                                                 HeaderController.this.wifiConnectionRunning = false;
                                                 HeaderController.this.mainPage.updateWifiConnectionStatus(connectionResult);
                                                 if (connectionResult) {
+                                                    Runnable task = HeaderController.this.wifiConnectedTask;
+                                                    if (task != null) {
+                                                        try {
+                                                            task.run();
+                                                        } catch (RuntimeException exception) {
+                                                            LOGGER.log(Level.WARNING, "WiFi connected task failed" + " | error=" + exception);
+                                                        }
+                                                    }
                                                     LOGGER.log(Level.INFO, "Automatic WiFi" + " connection successful" + " | SSID: " + HeaderController.this.wifiService.getConfiguredSsid());
                                                 } else {
                                                     LOGGER.log(Level.WARNING,

@@ -8,6 +8,7 @@ import com.nxp.example.smartgreenhouse.models.sensor.SensorData;
 import com.nxp.example.smartgreenhouse.models.sensor.SensorDataStore;
 import com.nxp.example.smartgreenhouse.models.sensor.SensorHistoryStore;
 import com.nxp.example.smartgreenhouse.services.lora.LoRaHardwareService;
+import com.nxp.example.smartgreenhouse.services.mqtt.MqttSubscribeService;
 import com.nxp.example.smartgreenhouse.state.AppState;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 
@@ -25,6 +26,7 @@ public class AppController {
     private final ActuatorDataStore actuatorDataStore;
 
     private final LoRaHardwareService loRaHardwareService;
+    private final MqttSubscribeService mqttSubscribeService;
 
     public AppController() {
         this.mainPage = new MainPage();
@@ -33,6 +35,7 @@ public class AppController {
         this.sensorHistoryStore = new SensorHistoryStore();
         this.actuatorDataStore = new ActuatorDataStore();
         this.headerController = new HeaderController(this.mainPage);
+        this.mqttSubscribeService = new MqttSubscribeService();
         this.overviewController = new OverviewController(this.mainPage, appState, sensorDataStore);
         this.sensorDetailController = new SensorDetailController(this.mainPage, appState, sensorDataStore, this.sensorHistoryStore);
         this.actuatorDetailController = new ActuatorDetailController(this.mainPage, appState, this.actuatorDataStore);
@@ -43,6 +46,16 @@ public class AppController {
                     @Override
                     public void run() {
                         AppController.this.loRaHardwareService.poll();
+                    }
+                }
+        );
+        this.headerController.setWifiConnectedTask(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        AppController.this
+                                .mqttSubscribeService
+                                .start();
                     }
                 }
         );

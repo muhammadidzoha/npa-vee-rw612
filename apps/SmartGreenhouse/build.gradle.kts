@@ -15,7 +15,8 @@ dependencies {
     implementation(libs.api.drawing)
     implementation(libs.api.device)
     implementation(libs.api.ecom.wifi)
-    implementation(libs.api.ecom.network)
+    implementation("ej.library.iot:micropaho:1.0.0")
+    implementation(libs.api.net)
     implementation(libs.api.kf)
 
     implementation(libs.library.mwt)
