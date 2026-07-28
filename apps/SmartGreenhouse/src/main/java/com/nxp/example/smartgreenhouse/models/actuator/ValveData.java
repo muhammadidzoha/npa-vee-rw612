@@ -3,8 +3,9 @@ package com.nxp.example.smartgreenhouse.models.actuator;
 public final class ValveData {
 
     private final int valveId;
-
     private final int trayId;
+
+    private boolean available;
 
     private boolean open;
 
@@ -16,9 +17,10 @@ public final class ValveData {
         this.valveId = valveId;
         this.trayId = trayId;
 
+        this.available = false;
         this.open = false;
-        this.lastOpenedAt = 0;
-        this.lastUpdated = 0;
+        this.lastOpenedAt = 0L;
+        this.lastUpdated = 0L;
     }
 
     public int getValveId() {
@@ -27,6 +29,10 @@ public final class ValveData {
 
     public int getTrayId() {
         return this.trayId;
+    }
+
+    public boolean isAvailable() {
+        return this.available;
     }
 
     public boolean isOpen() {
@@ -42,13 +48,12 @@ public final class ValveData {
     }
 
     public void updateState(boolean newOpen, long timestamp) {
-        boolean previousOpen = this.open;
-
-        if (!previousOpen && newOpen) {
+        if ((!this.available && newOpen) || (this.available && !this.open && newOpen)) {
             this.lastOpenedAt = timestamp;
         }
 
         this.open = newOpen;
+        this.available = true;
         this.lastUpdated = timestamp;
     }
 }

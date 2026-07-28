@@ -140,7 +140,7 @@ public class ActuatorDetail extends Container {
 
     public void setActuatorItem(ActuatorDisplayItem actuatorItem) {
         this.actuatorItem = actuatorItem;
-        this.actuatorToggle.setChecked(actuatorItem != null && actuatorItem.isActive());
+        this.actuatorToggle.setChecked(actuatorItem != null && actuatorItem.isDataAvailable() && actuatorItem.isActive());
 
         requestLayOut();
         requestRender();
@@ -196,11 +196,11 @@ public class ActuatorDetail extends Container {
     }
 
     private String getControlLeftText() {
-        return isPumpMode() ? "MATI" : "TUTUP";
+        return isPumpMode() ? "MATI" : "OFF";
     }
 
     private String getControlRightText() {
-        return isPumpMode() ? "NYALA" : "BUKA";
+        return isPumpMode() ? "NYALA" : "ON";
     }
 
     private int getToggleX(int contentWidth) {
@@ -365,23 +365,34 @@ public class ActuatorDetail extends Container {
         g.setColor(ApplicationColors.SECONDARY_COLOR);
         Painter.drawString(g, "STATUS", this.fonts.statusControlFont, frameX + STATUS_LABEL_PADDING_LEFT, labelY);
 
-        boolean activeStatus = this.actuatorItem != null && this.actuatorItem.isActive();
+        boolean dataAvailable = this.actuatorItem != null && this.actuatorItem.isDataAvailable();
+        boolean activeStatus = dataAvailable && this.actuatorItem.isActive();
+
         String statusText;
-        if (isPumpMode()) {
-            statusText = activeStatus ? "NYALA" : "MATI";
+
+        if (!dataAvailable) {
+            statusText = "-";
         } else {
-            statusText = activeStatus ? "BUKA" : "TUTUP";
+            statusText = activeStatus ? "NYALA" : "MATI";
         }
+
         Image statusFrame = activeStatus ? this.images.statusOptimalFrame : this.images.statusBahayaFrame;
-        int statusTextColor = activeStatus ? ApplicationColors.GREEN : ApplicationColors.RED;
+        int statusTextColor;
+
+        if (!dataAvailable) {
+            statusTextColor = ApplicationColors.SECONDARY_COLOR;
+        } else {
+            statusTextColor = activeStatus ? ApplicationColors.GREEN : ApplicationColors.RED;
+        }
 
         int statusFrameX = frameX + this.images.actuatorStatusFrame.getWidth() - STATUS_RIGHT_PADDING - statusFrame.getWidth();
         int statusFrameY = frameY + (this.images.actuatorStatusFrame.getHeight() - statusFrame.getHeight()) / 2;
-        Painter.drawImage(g, statusFrame, statusFrameX, statusFrameY);
 
+        Painter.drawImage(g, statusFrame, statusFrameX, statusFrameY);
         int statusTextWidth = this.fonts.statusAlertFont.stringWidth(statusText);
         int statusTextX = statusFrameX + (statusFrame.getWidth() - statusTextWidth) / 2 + 1;
         int statusTextY = statusFrameY + (statusFrame.getHeight() - this.fonts.statusAlertFont.getHeight()) / 2;
+
         g.setColor(statusTextColor);
         Painter.drawString(g, statusText, this.fonts.statusAlertFont, statusTextX, statusTextY);
     }
@@ -432,24 +443,28 @@ public class ActuatorDetail extends Container {
     }
 
     private void drawValveInformation(GraphicsContext g, int frameX, int frameY) {
+        String labelText = "ALIRAN AIR";
+        String valueText = "SELALU AKTIF";
+
+        int frameWidth = this.images.actuatorStatusFrame.getWidth();
+
         int labelY = frameY + 7;
+
         int valueY = labelY + this.fonts.valveLabelFont.getHeight() + VALVE_LABEL_TO_VALUE_GAP;
 
+        int labelWidth = this.fonts.valveLabelFont.stringWidth(labelText);
+
+        int labelX = frameX + (frameWidth - labelWidth) / 2;
+
+        int valueWidth =
+                this.fonts.valveValueFont.stringWidth(valueText);
+        int valueX = frameX + (frameWidth - valueWidth) / 2;
+
         g.setColor(ApplicationColors.SECONDARY_COLOR);
-        Painter.drawString(g, "STATE", this.fonts.valveLabelFont, frameX + VALVE_STATE_OFFSET_X, labelY);
+        Painter.drawString(g, labelText, this.fonts.valveLabelFont, labelX, labelY);
 
-        Painter.drawImage(g, this.images.divideVertical, frameX + VALVE_DIVIDER_OFFSET_X, labelY);
-        Painter.drawString(g, "FLOW", this.fonts.valveLabelFont, frameX + VALVE_FLOW_OFFSET_X, labelY);
-
-        boolean valveOpen = this.actuatorItem != null && this.actuatorItem.isActive();
-        boolean flowActive = this.actuatorItem != null && this.actuatorItem.isFlowActive();
-        String stateText = valveOpen ? "BUKA" : "TUTUP";
-        String flowText = flowActive ? "AKTIF" : "TIDAK AKTIF";
-        g.setColor(valveOpen ? ApplicationColors.GREEN : ApplicationColors.RED);
-        Painter.drawString(g, stateText, this.fonts.valveValueFont, frameX + VALVE_STATE_OFFSET_X, valueY);
-
-        g.setColor(flowActive ? ApplicationColors.GREEN : ApplicationColors.RED);
-        Painter.drawString(g, flowText, this.fonts.valveValueFont, frameX + VALVE_FLOW_OFFSET_X, valueY);
+        g.setColor(ApplicationColors.GREEN);
+        Painter.drawString(g, valueText, this.fonts.valveValueFont, valueX, valueY);
     }
 
     private void drawActivationCards(GraphicsContext g, int contentWidth) {
@@ -526,13 +541,17 @@ public class ActuatorDetail extends Container {
         g.setColor(ApplicationColors.SECONDARY_COLOR);
         Painter.drawString(g, "TERAKHIR DIPERBARUI", this.fonts.updateFont, frameX + UPDATE_HORIZONTAL_PADDING, textY);
 
-        String timeText = this.actuatorItem == null ? "-" : this.actuatorItem.getLastUpdatedTimeText();
-
-        int timeWidth = this.fonts.updateFont.stringWidth(timeText);
+        String updateText = "-";
+        if (this.actuatorItem != null && this.actuatorItem.isDataAvailable()) {
+            String updateDate = this.actuatorItem.getLastUpdatedDateText();
+            String updateTime = this.actuatorItem.getLastUpdatedTimeText();
+            updateText = updateDate + " | " + updateTime;
+        }
+        int timeWidth = this.fonts.updateFont.stringWidth(updateText);
 
         int timeX = frameX + this.images.optimalFrame.getWidth() - UPDATE_HORIZONTAL_PADDING - timeWidth;
 
-        Painter.drawString(g, timeText, this.fonts.updateFont, timeX, textY);
+        Painter.drawString(g, updateText, this.fonts.updateFont, timeX, textY);
     }
 
     private void drawTrayIndicators(GraphicsContext g, int contentWidth) {

@@ -11,37 +11,43 @@ public final class ActuatorDisplayItem {
     private final int actuatorId;
     private final int trayId;
 
+    private final boolean dataAvailable;
     private final boolean active;
-
     private final boolean flowActive;
 
     private final String durationText;
+
     private final String lastActivatedTimeText;
     private final String lastActivatedDateText;
+
     private final String lastUpdatedTimeText;
+    private final String lastUpdatedDateText;
 
     public ActuatorDisplayItem(
             int actuatorId,
             int trayId,
+            boolean dataAvailable,
             boolean active,
             boolean flowActive,
             String durationText,
             String lastActivatedTimeText,
             String lastActivatedDateText,
             String lastUpdatedTimeText,
+            String lastUpdatedDateText,
             int trayIndex,
             int trayCount
     ) {
         this.actuatorId = actuatorId;
         this.trayId = trayId;
+        this.dataAvailable = dataAvailable;
         this.active = active;
         this.flowActive = flowActive;
-
         this.durationText = durationText == null ? "" : durationText;
+
         this.lastActivatedTimeText = lastActivatedTimeText == null ? "-" : lastActivatedTimeText;
         this.lastActivatedDateText = lastActivatedDateText == null ? "-" : lastActivatedDateText;
         this.lastUpdatedTimeText = lastUpdatedTimeText == null ? "-" : lastUpdatedTimeText;
-
+        this.lastUpdatedDateText = lastUpdatedDateText == null ? "-" : lastUpdatedDateText;
         this.trayIndex = trayIndex;
         this.trayCount = trayCount;
     }
@@ -56,6 +62,10 @@ public final class ActuatorDisplayItem {
 
     public boolean hasTray() {
         return this.trayId != NO_TRAY_ID;
+    }
+
+    public boolean isDataAvailable() {
+        return this.dataAvailable;
     }
 
     public boolean isActive() {
@@ -80,6 +90,10 @@ public final class ActuatorDisplayItem {
 
     public String getLastUpdatedTimeText() {
         return this.lastUpdatedTimeText;
+    }
+
+    public String getLastUpdatedDateText() {
+        return this.lastUpdatedDateText;
     }
 
     public boolean isPump() {

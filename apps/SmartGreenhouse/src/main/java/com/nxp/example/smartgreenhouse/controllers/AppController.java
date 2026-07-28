@@ -1,7 +1,6 @@
 package com.nxp.example.smartgreenhouse.controllers;
 
 import com.nxp.example.smartgreenhouse.models.actuator.ActuatorDataStore;
-import com.nxp.example.smartgreenhouse.models.actuator.SampleActuatorData;
 import com.nxp.example.smartgreenhouse.models.sensor.SampleSensorData;
 import com.nxp.example.smartgreenhouse.models.sensor.SampleSensorHistoryData;
 import com.nxp.example.smartgreenhouse.models.sensor.SensorData;
@@ -35,12 +34,12 @@ public class AppController {
         this.sensorHistoryStore = new SensorHistoryStore();
         this.actuatorDataStore = new ActuatorDataStore();
         this.headerController = new HeaderController(this.mainPage);
-        this.mqttSubscribeService = new MqttSubscribeService();
         this.overviewController = new OverviewController(this.mainPage, appState, sensorDataStore);
         this.sensorDetailController = new SensorDetailController(this.mainPage, appState, sensorDataStore, this.sensorHistoryStore);
         this.actuatorDetailController = new ActuatorDetailController(this.mainPage, appState, this.actuatorDataStore);
         this.menuController = new MenuController(this.mainPage, appState, this.sensorDetailController, this.actuatorDetailController);
         this.loRaHardwareService = new LoRaHardwareService(sensorDataStore, this.sensorHistoryStore, this.overviewController, this.sensorDetailController);
+        this.mqttSubscribeService = new MqttSubscribeService(this.actuatorDataStore, this.actuatorDetailController);
         this.headerController.setPeriodicTask(
                 new Runnable() {
                     @Override
@@ -79,6 +78,5 @@ public class AppController {
         SensorData[] nodes = SampleSensorData.createSampleSensorData();
         this.overviewController.setSensorNodes(nodes);
         this.sensorHistoryStore.addAll(SampleSensorHistoryData.create());
-        SampleActuatorData.load(this.actuatorDataStore);
     }
 }

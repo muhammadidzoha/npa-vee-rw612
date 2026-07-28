@@ -67,7 +67,7 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
 
             int trayCount = this.actuatorDataStore.getValveCount();
             int trayIndex = this.actuatorDataStore.getValveIndexByTrayId(trayId);
-            displayItem = ActuatorDisplayBuilder.buildValve(valveData, this.actuatorDataStore.getPumpData(), trayIndex, trayCount);
+            displayItem = ActuatorDisplayBuilder.buildValve(valveData, trayIndex, trayCount);
         } else {
             return false;
         }
@@ -82,6 +82,13 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
         return true;
     }
 
+    public void refreshIfOpen() {
+        if (!this.mainPage.isActuatorDetailOpen()) {
+            return;
+        }
+        refreshSelectedActuator();
+    }
+
     @Override
     public void onBack() {
         this.currentDisplayItem = null;
@@ -89,19 +96,24 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
     }
 
     @Override
-    public void onToggleRequested(boolean targetState) {
-        if (this.currentDisplayItem == null) {
-            return;
-        }
-
-        long currentTimestamp = System.currentTimeMillis();
-
-        if (this.currentDisplayItem.isPump()) {
-            this.actuatorDataStore.updatePumpState(targetState, currentTimestamp);
-        } else if (this.currentDisplayItem.isValve()) {
-            this.actuatorDataStore.updateValveState(this.currentDisplayItem.getTrayId(), targetState, currentTimestamp);
-        }
-
+    public void onToggleRequested(
+            boolean targetState
+    ) {
+        /*
+         * Untuk sementara toggle bersifat read-only.
+         *
+         * Jangan mengubah ActuatorDataStore di sini.
+         * Status hanya boleh berubah setelah menerima
+         * pesan MQTT pada topic status.
+         *
+         * Pada tahap publish nanti:
+         *
+         * toggle ditekan
+         * → publish perintah
+         * → perangkat aktuator memproses
+         * → status MQTT diterima
+         * → GUI berubah.
+         */
         refreshSelectedActuator();
     }
 

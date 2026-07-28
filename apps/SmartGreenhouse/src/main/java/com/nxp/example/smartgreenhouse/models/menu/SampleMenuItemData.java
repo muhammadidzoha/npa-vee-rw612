@@ -11,7 +11,7 @@ public class SampleMenuItemData {
     public static MenuItemData[] createSampleMenuItems() {
         SensorDefinition[] sensorDefs = SensorDefinitionProvider.getAll();
 
-        int actuatorCount = 2;
+        int actuatorCount = 1;
         int total = sensorDefs.length + actuatorCount;
         MenuItemData[] items = new MenuItemData[total];
 
@@ -20,11 +20,6 @@ public class SampleMenuItemData {
         }
 
         items[sensorDefs.length] = MenuItemData.createActuator(
-                ActuatorId.POMPA_AIR,
-                Image.getImage(Icons.POMPA_AIR_ICON_32),
-                "POMPA AIR"
-        );
-        items[sensorDefs.length + 1] = MenuItemData.createActuator(
                 ActuatorId.KATUP_AIR,
                 Image.getImage(Icons.KATUP_AIR_ICON_32),
                 "KATUP AIR"

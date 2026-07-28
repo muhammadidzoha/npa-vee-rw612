@@ -243,6 +243,10 @@ public class MainPage extends Container {
         return this.wifiAuthenticationOpen;
     }
 
+    public boolean isActuatorDetailOpen() {
+        return this.actuatorDetailOpen;
+    }
+
     public void openWifiAuthentication(WifiNetwork network) {
         this.menuOpen = false;
         this.wifiOpen = false;

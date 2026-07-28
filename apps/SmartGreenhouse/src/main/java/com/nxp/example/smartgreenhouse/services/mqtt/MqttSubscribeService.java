@@ -1,5 +1,7 @@
 package com.nxp.example.smartgreenhouse.services.mqtt;
 
+import com.nxp.example.smartgreenhouse.controllers.ActuatorDetailController;
+import com.nxp.example.smartgreenhouse.models.actuator.ActuatorDataStore;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -31,7 +33,23 @@ public final class MqttSubscribeService {
 
     private boolean startRequested;
 
-    public MqttSubscribeService() {
+    private static final String VALVE_TOPIC_PREFIX =
+            "gh01/node/255/status/valve";
+
+    private final ActuatorDataStore actuatorDataStore;
+
+    private final ActuatorDetailController actuatorDetailController;
+
+    public MqttSubscribeService(ActuatorDataStore actuatorDataStore, ActuatorDetailController actuatorDetailController) {
+        if (actuatorDataStore == null) {
+            throw new NullPointerException("actuatorDataStore tidak boleh null.");
+        }
+
+        if (actuatorDetailController == null) {
+            throw new NullPointerException("actuatorDetailController tidak boleh null.");
+        }
+        this.actuatorDataStore = actuatorDataStore;
+        this.actuatorDetailController = actuatorDetailController;
         this.mqttClient = null;
         this.startRequested = false;
     }
@@ -108,6 +126,7 @@ public final class MqttSubscribeService {
                                             + "[MQTT] Payload : "
                                             + payloadText
                             );
+                            handleValveStatus(topic, payloadText);
                         }
                     }
             );
@@ -194,6 +213,143 @@ public final class MqttSubscribeService {
                             + " | error="
                             + exception
             );
+        }
+    }
+
+    private void handleValveStatus(
+            String topic,
+            String payloadText
+    ) {
+        final int valveId =
+                parseValveId(
+                        topic
+                );
+
+        if (valveId <= 0) {
+            LOGGER.log(
+                    Level.WARNING,
+                    "Unsupported actuator topic"
+                            + " | topic="
+                            + topic
+            );
+
+            return;
+        }
+
+        if (payloadText == null) {
+            LOGGER.log(
+                    Level.WARNING,
+                    "Empty MQTT actuator payload"
+                            + " | topic="
+                            + topic
+            );
+
+            return;
+        }
+
+        String normalizedPayload =
+                payloadText.trim();
+
+        final boolean open;
+
+        if ("ON".equalsIgnoreCase(
+                normalizedPayload
+        )) {
+            open = true;
+
+        } else if ("OFF".equalsIgnoreCase(
+                normalizedPayload
+        )) {
+            open = false;
+
+        } else {
+            LOGGER.log(
+                    Level.WARNING,
+                    "Unsupported actuator payload"
+                            + " | topic="
+                            + topic
+                            + " | payload="
+                            + payloadText
+            );
+
+            return;
+        }
+
+        /*
+         * Karena payload hanya berisi ON/OFF,
+         * waktu yang digunakan adalah saat pesan
+         * diterima oleh board.
+         */
+        final long receivedTimestamp =
+                System.currentTimeMillis();
+
+        MicroUI.callSerially(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        boolean updated =
+                                MqttSubscribeService.this
+                                        .actuatorDataStore
+                                        .updateValveState(
+                                                valveId,
+                                                open,
+                                                receivedTimestamp
+                                        );
+
+                        if (!updated) {
+                            LOGGER.log(
+                                    Level.WARNING,
+                                    "Valve was not found"
+                                            + " | valveId="
+                                            + valveId
+                            );
+
+                            return;
+                        }
+
+                        MqttSubscribeService.this
+                                .actuatorDetailController
+                                .refreshIfOpen();
+
+                        LOGGER.log(
+                                Level.INFO,
+                                "[MQTT] Valve status applied"
+                                        + " | valveId="
+                                        + valveId
+                                        + " | trayId="
+                                        + valveId
+                                        + " | state="
+                                        + (open
+                                        ? "ON"
+                                        : "OFF")
+                        );
+                    }
+                }
+        );
+    }
+
+    private static int parseValveId(String topic) {
+        if (topic == null || !topic.startsWith(VALVE_TOPIC_PREFIX)) {
+            return -1;
+        }
+
+        String valveIdText = topic.substring(VALVE_TOPIC_PREFIX.length());
+
+        if (valveIdText.length() == 0) {
+            return -1;
+        }
+
+        for (int index = 0; index < valveIdText.length(); index++) {
+            char character = valveIdText.charAt(index);
+            if (character < '0' || character > '9') {
+                return -1;
+            }
+        }
+
+        try {
+            return Integer.parseInt(valveIdText);
+        } catch (NumberFormatException exception) {
+            return -1;
         }
     }
 
