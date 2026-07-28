@@ -3,7 +3,6 @@ package com.nxp.example.smartgreenhouse.controllers;
 import com.nxp.example.smartgreenhouse.models.actuator.ActuatorDataStore;
 import com.nxp.example.smartgreenhouse.models.actuator.SampleActuatorData;
 import com.nxp.example.smartgreenhouse.models.sensor.*;
-import com.nxp.example.smartgreenhouse.services.lora.LoRaNativeSmokeTest;
 import com.nxp.example.smartgreenhouse.state.AppState;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 
@@ -38,8 +37,6 @@ public class AppController {
 
     public void start() {
         loadSensorData();
-
-        LoRaNativeSmokeTest.start();
 
         this.headerController.init();
         this.overviewController.init();
