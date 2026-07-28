@@ -32,7 +32,15 @@ public final class MqttSubscribeService {
 
     private MqttClient mqttClient;
 
-    private boolean startRequested;
+    private boolean workerStarted;
+
+    private volatile boolean serviceRunning;
+
+    private static final long CONNECTION_CHECK_INTERVAL_MS = 1000L;
+
+    private static final long RECONNECT_INITIAL_DELAY_MS = 2000L;
+
+    private static final long RECONNECT_MAX_DELAY_MS = 30000L;
 
     private static final String VALVE_TOPIC_PREFIX = "gh01/node/255/status/valve";
 
@@ -50,134 +58,173 @@ public final class MqttSubscribeService {
         }
         this.actuatorDataStore = actuatorDataStore;
         this.actuatorDetailController = actuatorDetailController;
+
         this.mqttClient = null;
-        this.startRequested = false;
+        this.workerStarted = false;
+        this.serviceRunning = false;
     }
 
     public synchronized void start() {
-        if (this.startRequested) {
-            LOGGER.log(Level.INFO, "MQTT start was already requested.");
+        if (this.workerStarted) {
+            LOGGER.log(Level.INFO, "MQTT connection worker is already running.");
             return;
         }
 
-        if (this.mqttClient != null && this.mqttClient.isConnected()) {
-            LOGGER.log(Level.INFO, "MQTT client is already connected.");
-            return;
-        }
+        this.workerStarted = true;
+        this.serviceRunning = true;
 
-        this.startRequested = true;
         Thread mqttWorker =
                 new Thread(
                         new Runnable() {
                             @Override
                             public void run() {
-                                MqttSubscribeService.this.connectAndSubscribe();
+                                MqttSubscribeService.this.runConnectionLoop();
                             }
                         },
-                        "mqtt-connect"
+                        "mqtt-worker"
                 );
 
         try {
             mqttWorker.start();
         } catch (Error error) {
-            this.startRequested = false;
-            LOGGER.log(Level.SEVERE, "Unable to start MQTT thread" + " | error=" + error);
+            this.workerStarted = false;
+            this.serviceRunning = false;
+            LOGGER.log(Level.SEVERE, "Unable to start MQTT worker" + " | error=" + error);
         }
     }
 
-    private void connectAndSubscribe() {
-        try {
-            Thread.sleep(2000L);
-            LOGGER.log(Level.INFO,
-                    "Connecting to MQTT broker"
-                            + " | URI="
-                            + BROKER_URI
-                            + " | clientId="
-                            + CLIENT_ID
-            );
+    private void connectAndSubscribeOnce() throws MqttException {
+        LOGGER.log(Level.INFO, "Connecting to MQTT broker" + " | URI=" + BROKER_URI + " | clientId=" + CLIENT_ID);
+        MqttConnectOptions connectOptions = new MqttConnectOptions();
+        connectOptions.setConnectionTimeout(10);
+        connectOptions.setKeepAliveInterval(60);
 
-            MqttClient newClient = new MqttClient(BROKER_URI, CLIENT_ID);
-            newClient.setCallback(
-                    new MqttCallback() {
-                        @Override
-                        public void connectionLost(Throwable cause) {
-                            synchronized (MqttSubscribeService.this) {
-                                MqttSubscribeService.this.startRequested = false;
-                            }
+        if (AUTHENTICATION_ENABLED) {
+            connectOptions.setUserName(USERNAME);
+            connectOptions.setPassword(PASSWORD.toCharArray());
+        }
+
+        this.mqttClient.connect(connectOptions);
+        LOGGER.log(Level.INFO, "MQTT broker connected" + " | URI=" + BROKER_URI + " | cleanSession=" + connectOptions.isCleanSession());
+        LOGGER.log(Level.INFO, "Subscribing to MQTT topic" + " | topic=" + TOPIC_FILTER + " | qos=" + SUBSCRIBE_QOS);
+
+        this.mqttClient.subscribe(TOPIC_FILTER, SUBSCRIBE_QOS);
+        LOGGER.log(Level.INFO, "MQTT subscription successful" + " | topic=" + TOPIC_FILTER);
+    }
+
+    private void runConnectionLoop() {
+        long reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
+        while (this.serviceRunning) {
+            try {
+                ensureClientCreated();
+                if (!this.mqttClient.isConnected()) {
+                    connectAndSubscribeOnce();
+                    reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
+                }
+
+                while (this.serviceRunning && this.mqttClient != null && this.mqttClient.isConnected()) {
+                    Thread.sleep(CONNECTION_CHECK_INTERVAL_MS);
+                }
+            } catch (InterruptedException exception) {
+                LOGGER.log(Level.WARNING, "MQTT worker was interrupted" + " | error=" + exception);
+                break;
+            } catch (MqttException exception) {
+                LOGGER.log(Level.WARNING,
+                        "MQTT connection attempt failed"
+                                + " | reasonCode="
+                                + exception.getReasonCode()
+                                + " | message="
+                                + exception.getMessage()
+                                + " | cause="
+                                + exception.getCause()
+                );
+            } catch (RuntimeException exception) {
+                LOGGER.log(
+                        Level.WARNING,
+                        "Unexpected MQTT worker error"
+                                + " | error="
+                                + exception
+                );
+            }
+
+            if (!this.serviceRunning) {
+                break;
+            }
+
+            LOGGER.log(Level.INFO, "MQTT reconnect scheduled" + " | delayMs=" + reconnectDelay);
+            try {
+                Thread.sleep(reconnectDelay);
+            } catch (InterruptedException exception) {
+                LOGGER.log(Level.WARNING, "MQTT reconnect delay interrupted" + " | error=" + exception);
+                break;
+            }
+
+            reconnectDelay *= 2L;
+            if (reconnectDelay > RECONNECT_MAX_DELAY_MS) {
+                reconnectDelay = RECONNECT_MAX_DELAY_MS;
+            }
+        }
+
+        synchronized (this) {
+            this.workerStarted = false;
+            this.serviceRunning = false;
+        }
+
+        LOGGER.log(Level.INFO, "MQTT connection worker stopped.");
+    }
+
+    private synchronized void ensureClientCreated() throws MqttException {
+        if (this.mqttClient != null) {
+            return;
+        }
+
+        this.mqttClient = new MqttClient(BROKER_URI, CLIENT_ID);
+        this.mqttClient.setCallback(
+                new MqttCallback() {
+                    @Override
+                    public void connectionLost(Throwable cause) {
+                        if (cause instanceof MqttException) {
+                            MqttException mqttException = (MqttException) cause;
+                            LOGGER.log(
+                                    Level.WARNING,
+                                    "MQTT connection lost"
+                                            + " | reasonCode="
+                                            + mqttException
+                                            .getReasonCode()
+                                            + " | message="
+                                            + mqttException
+                                            .getMessage()
+                                            + " | cause="
+                                            + mqttException
+                                            .getCause()
+                            );
+                        } else {
                             LOGGER.log(Level.WARNING, "MQTT connection lost" + " | cause=" + cause);
                         }
-
-                        @Override
-                        public void messageArrived(String topic, MqttMessage message) {
-                            byte[] payload = message.getPayload();
-                            String payloadText = payload == null ? "" : new String(payload);
-                            LOGGER.log(
-                                    Level.INFO,
-                                    "\r\n"
-                                            + "[MQTT] Message received"
-                                            + "\r\n"
-                                            + "[MQTT] Topic   : "
-                                            + topic
-                                            + "\r\n"
-                                            + "[MQTT] QoS     : "
-                                            + message.getQos()
-                                            + "\r\n"
-                                            + "[MQTT] Payload : "
-                                            + payloadText
-                            );
-                            handleValveStatus(topic, payloadText);
-                        }
                     }
-            );
 
-            MqttConnectOptions connectOptions = new MqttConnectOptions();
-
-            connectOptions.setConnectionTimeout(10);
-            connectOptions.setKeepAliveInterval(30);
-
-            if (AUTHENTICATION_ENABLED) {
-                connectOptions.setUserName(USERNAME);
-                connectOptions.setPassword(PASSWORD.toCharArray());
-            }
-
-            synchronized (this) {
-                this.mqttClient = newClient;
-            }
-
-            newClient.connect(connectOptions);
-            LOGGER.log(Level.INFO, "MQTT broker connected" + " | URI=" + BROKER_URI);
-            LOGGER.log(Level.INFO, "Subscribing to MQTT topic" + " | topic=" + TOPIC_FILTER + " | qos=" + SUBSCRIBE_QOS);
-
-            newClient.subscribe(TOPIC_FILTER, SUBSCRIBE_QOS);
-            LOGGER.log(Level.INFO, "MQTT subscription successful" + " | topic=" + TOPIC_FILTER);
-        } catch (InterruptedException exception) {
-            synchronized (this) {
-                this.startRequested =
-                        false;
-            }
-
-            LOGGER.log(Level.WARNING, "MQTT worker was interrupted" + " | error=" + exception);
-        } catch (MqttException exception) {
-            synchronized (this) {
-                this.startRequested = false;
-            }
-
-            LOGGER.log(
-                    Level.SEVERE,
-                    "MQTT operation failed"
-                            + " | reasonCode="
-                            + exception.getReasonCode()
-                            + " | message="
-                            + exception.getMessage()
-                            + " | cause="
-                            + exception.getCause()
-            );
-        } catch (RuntimeException exception) {
-            synchronized (this) {
-                this.startRequested = false;
-            }
-            LOGGER.log(Level.SEVERE, "Unexpected MQTT error" + " | error=" + exception);
-        }
+                    @Override
+                    public void messageArrived(String topic, MqttMessage message) {
+                        byte[] payload = message.getPayload();
+                        String payloadText = payload == null ? "" : new String(payload);
+                        LOGGER.log(
+                                Level.INFO,
+                                "\r\n"
+                                        + "[MQTT] Message received"
+                                        + "\r\n"
+                                        + "[MQTT] Topic   : "
+                                        + topic
+                                        + "\r\n"
+                                        + "[MQTT] QoS     : "
+                                        + message.getQos()
+                                        + "\r\n"
+                                        + "[MQTT] Payload : "
+                                        + payloadText
+                        );
+                        handleValveStatus(topic, payloadText);
+                    }
+                }
+        );
     }
 
     private void handleValveStatus(String topic, String payloadText) {
