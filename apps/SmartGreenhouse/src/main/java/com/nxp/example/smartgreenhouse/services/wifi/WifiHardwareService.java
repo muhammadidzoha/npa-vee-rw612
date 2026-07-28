@@ -1,8 +1,5 @@
 package com.nxp.example.smartgreenhouse.services.wifi;
 
-import com.nxp.example.smartgreenhouse.models.wifi.WifiNetwork;
-import com.nxp.example.smartgreenhouse.models.wifi.WifiScanResult;
-
 import ej.ecom.wifi.AccessPoint;
 import ej.ecom.wifi.SecurityMode;
 import ej.ecom.wifi.WifiCapability;
@@ -15,9 +12,10 @@ import java.util.logging.Logger;
 
 public final class WifiHardwareService {
 
-    private static final int MAX_VISIBLE_NETWORKS = 16;
+    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: WIFI HARDWARE SERVICE]");
 
-    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: Wifi Hardware Service]");
+    private static final String CONFIGURED_SSID = "Iphone 5G";
+    private static final String CONFIGURED_PASSWORD = "1sampai9";
 
     private final WifiManager wifiManager;
 
@@ -29,142 +27,97 @@ public final class WifiHardwareService {
         return this.wifiManager.getCapability();
     }
 
-    public synchronized WifiScanResult scan() throws IOException {
-        LOGGER.log(Level.INFO, "Before WifiManager.scan(false)");
-
-        AccessPoint[] scannedAccessPoints = this.wifiManager.scan(false);
-        LOGGER.log(Level.INFO, "After WifiManager.scan(false)" + " | count: " + scannedAccessPoints.length);
-        LOGGER.log(Level.INFO, "Before WifiManager.getJoined() after scan");
+    public synchronized boolean connectConfiguredNetwork() throws IOException {
+        validateConfiguration();
 
         AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
-        LOGGER.log(Level.INFO, "After WifiManager.getJoined() after scan");
 
-        WifiNetwork[] mergedNetworks = new WifiNetwork[MAX_VISIBLE_NETWORKS];
-
-        int networkCount = 0;
-
-        if (hasVisibleSsid(joinedAccessPoint)) {
-            mergedNetworks[networkCount] = createWifiNetwork(joinedAccessPoint, true);
-            networkCount++;
-            LOGGER.log(Level.INFO, "Connected WiFi added to list" + " | SSID: " + joinedAccessPoint.getSSID());
+        if (isConfiguredAccessPoint(joinedAccessPoint)) {
+            LOGGER.log(Level.INFO, "Already connected" + " | SSID: " + CONFIGURED_SSID);
+            return true;
         }
 
-        for (int i = 0; i < scannedAccessPoints.length && networkCount < MAX_VISIBLE_NETWORKS; i++) {
-            AccessPoint scannedAccessPoint = scannedAccessPoints[i];
-            if (!hasVisibleSsid(scannedAccessPoint)) {
-                continue;
-            }
-
-            if (isSameAccessPoint(joinedAccessPoint, scannedAccessPoint)) {
-                continue;
-            }
-
-            mergedNetworks[networkCount] = createWifiNetwork(scannedAccessPoint, false);
-
-            networkCount++;
-        }
-
-        WifiNetwork[] result = trimNetworks(mergedNetworks, networkCount);
-        boolean connected = joinedAccessPoint != null;
-        LOGGER.log(Level.INFO, "WifiHardwareService scan completed" + " | networks: " + result.length + " | connected: " + connected);
-
-        return new WifiScanResult(result, connected);
-    }
-
-    private static WifiNetwork createWifiNetwork(AccessPoint accessPoint, boolean connected) {
-        String ssid = accessPoint.getSSID();
-
-        SecurityMode securityMode = accessPoint.getSecurityMode();
-        if (securityMode == null) {
-            securityMode = SecurityMode.UNKNOWN;
-        }
-
-        boolean secured = securityMode != SecurityMode.OPEN;
-        return new WifiNetwork(ssid, accessPoint.getRSSI(), secured, connected, accessPoint, securityMode);
-    }
-
-    private static boolean hasVisibleSsid(AccessPoint accessPoint) {
-        if (accessPoint == null) {
+        if (joinedAccessPoint != null) {
+            LOGGER.log(Level.WARNING, "Already connected to another network" + " | current SSID: " + joinedAccessPoint.getSSID() + " | configured SSID: " + CONFIGURED_SSID);
             return false;
         }
 
-        String ssid = accessPoint.getSSID();
-        return ssid != null && ssid.length() > 0;
-    }
+        LOGGER.log(Level.INFO, "Searching configured WiFi" + " | SSID: " + CONFIGURED_SSID);
 
-    private static WifiNetwork[] trimNetworks(WifiNetwork[] networks, int length) {
-        WifiNetwork[] result = new WifiNetwork[length];
-        for (int i = 0; i < length; i++) {
-            result[i] = networks[i];
+        AccessPoint[] accessPoints = this.wifiManager.scan(false);
+        AccessPoint configuredAccessPoint = findConfiguredAccessPoint(accessPoints);
+
+        if (configuredAccessPoint == null) {
+            LOGGER.log(Level.WARNING, "Configured WiFi was not found" + " | SSID: " + CONFIGURED_SSID);
+            return false;
         }
 
-        return result;
-    }
+        SecurityMode securityMode = configuredAccessPoint.getSecurityMode();
 
-    public synchronized boolean connect(WifiNetwork network, String password) throws IOException {
-        if (network == null) {
-            throw new IllegalArgumentException("WifiNetwork tidak boleh null.");
-        }
-
-        AccessPoint accessPoint = network.getAccessPoint();
-        if (accessPoint == null) {
-            throw new IllegalArgumentException("AccessPoint asli tidak tersedia.");
-        }
-
-        SecurityMode securityMode = network.getSecurityMode();
         if (securityMode == null) {
             securityMode = SecurityMode.UNKNOWN;
         }
 
-        String passphrase = password == null ? "" : password;
+        String passphrase = CONFIGURED_PASSWORD;
+
         if (securityMode == SecurityMode.OPEN) {
             passphrase = "";
         } else {
             validatePassword(passphrase);
         }
 
-        this.wifiManager.join(accessPoint, passphrase, securityMode);
+        LOGGER.log(Level.INFO, "Joining configured WiFi" + " | SSID: " + CONFIGURED_SSID + " | security: " + securityMode);
 
-        AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
+        this.wifiManager.join(configuredAccessPoint, passphrase, securityMode);
+        joinedAccessPoint = this.wifiManager.getJoined();
 
-        return isSameAccessPoint(joinedAccessPoint, accessPoint);
+        boolean connected = isConfiguredAccessPoint(joinedAccessPoint);
+        LOGGER.log(connected ? Level.INFO : Level.WARNING, connected ? "Configured WiFi connected" + " | SSID: " + CONFIGURED_SSID : "Configured WiFi connection failed" + " | SSID: " + CONFIGURED_SSID);
+        return connected;
     }
 
-    public synchronized void disconnect() throws IOException {
-        this.wifiManager.leave();
+    public synchronized boolean isConnectedToConfiguredNetwork() throws IOException {
+        return isConfiguredAccessPoint(this.wifiManager.getJoined());
     }
 
-    public synchronized boolean isConnected() throws IOException {
-        return this.wifiManager.getJoined() != null;
+    public String getConfiguredSsid() {
+        return CONFIGURED_SSID;
     }
 
-    public synchronized String getConnectedSsid() throws IOException {
-        AccessPoint accessPoint = this.wifiManager.getJoined();
-        if (accessPoint == null) {
+    private static AccessPoint findConfiguredAccessPoint(AccessPoint[] accessPoints) {
+        if (accessPoints == null) {
             return null;
         }
 
-        return accessPoint.getSSID();
+        for (int index = 0; index < accessPoints.length; index++) {
+            AccessPoint accessPoint = accessPoints[index];
+            if (isConfiguredAccessPoint(accessPoint)) {
+                return accessPoint;
+            }
+        }
+
+        return null;
+    }
+
+    private static boolean isConfiguredAccessPoint(AccessPoint accessPoint) {
+        if (accessPoint == null) {
+            return false;
+        }
+
+        String ssid = accessPoint.getSSID();
+        return CONFIGURED_SSID.equals(ssid);
+    }
+
+    private static void validateConfiguration() {
+        if (CONFIGURED_SSID == null || CONFIGURED_SSID.length() == 0 || "MASUKKAN_SSID_DI_SINI".equals(CONFIGURED_SSID)) {
+            throw new IllegalStateException("SSID Wi-Fi belum dikonfigurasi.");
+        }
     }
 
     private static void validatePassword(String password) {
-        int length = password.length();
-        if (length < 8 || length > 64) {
-            throw new IllegalArgumentException("Password Wi-Fi harus terdiri " + "dari 8 sampai 64 karakter.");
+        int passwordLength = password == null ? 0 : password.length();
+        if (passwordLength < 8 || passwordLength > 64) {
+            throw new IllegalArgumentException("Password Wi-Fi harus terdiri" + " dari 8 sampai 64 karakter.");
         }
-    }
-
-    private static boolean isSameAccessPoint(AccessPoint first, AccessPoint second) {
-        if (first == null || second == null) {
-            return false;
-        }
-
-        String firstSsid = first.getSSID();
-        String secondSsid = second.getSSID();
-        if (firstSsid == null || secondSsid == null) {
-            return false;
-        }
-
-        return firstSsid.equals(secondSsid);
     }
 }
