@@ -1,7 +1,6 @@
 package com.nxp.example.smartgreenhouse.services.wifi;
 
 import ej.ecom.wifi.AccessPoint;
-import ej.ecom.wifi.SecurityMode;
 import ej.ecom.wifi.WifiCapability;
 import ej.ecom.wifi.WifiManager;
 
@@ -29,50 +28,33 @@ public final class WifiHardwareService {
 
     public synchronized boolean connectConfiguredNetwork() throws IOException {
         validateConfiguration();
+        validatePassword(CONFIGURED_PASSWORD);
 
         AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
-
         if (isConfiguredAccessPoint(joinedAccessPoint)) {
             LOGGER.log(Level.INFO, "Already connected" + " | SSID: " + CONFIGURED_SSID);
             return true;
         }
 
         if (joinedAccessPoint != null) {
-            LOGGER.log(Level.WARNING, "Already connected to another network" + " | current SSID: " + joinedAccessPoint.getSSID() + " | configured SSID: " + CONFIGURED_SSID);
-            return false;
+            LOGGER.log(Level.INFO, "Leaving previous WiFi" + " | current SSID: " + joinedAccessPoint.getSSID());
+            this.wifiManager.leave();
         }
 
-        LOGGER.log(Level.INFO, "Searching configured WiFi" + " | SSID: " + CONFIGURED_SSID);
+        LOGGER.log(Level.INFO, "Joining configured WiFi directly" + " | SSID: " + CONFIGURED_SSID);
 
-        AccessPoint[] accessPoints = this.wifiManager.scan(false);
-        AccessPoint configuredAccessPoint = findConfiguredAccessPoint(accessPoints);
+        this.wifiManager.join(CONFIGURED_SSID, CONFIGURED_PASSWORD);
+        LOGGER.log(Level.INFO, "WiFi join operation completed" + " | checking connection status...");
 
-        if (configuredAccessPoint == null) {
-            LOGGER.log(Level.WARNING, "Configured WiFi was not found" + " | SSID: " + CONFIGURED_SSID);
-            return false;
-        }
-
-        SecurityMode securityMode = configuredAccessPoint.getSecurityMode();
-
-        if (securityMode == null) {
-            securityMode = SecurityMode.UNKNOWN;
-        }
-
-        String passphrase = CONFIGURED_PASSWORD;
-
-        if (securityMode == SecurityMode.OPEN) {
-            passphrase = "";
-        } else {
-            validatePassword(passphrase);
-        }
-
-        LOGGER.log(Level.INFO, "Joining configured WiFi" + " | SSID: " + CONFIGURED_SSID + " | security: " + securityMode);
-
-        this.wifiManager.join(configuredAccessPoint, passphrase, securityMode);
         joinedAccessPoint = this.wifiManager.getJoined();
-
         boolean connected = isConfiguredAccessPoint(joinedAccessPoint);
-        LOGGER.log(connected ? Level.INFO : Level.WARNING, connected ? "Configured WiFi connected" + " | SSID: " + CONFIGURED_SSID : "Configured WiFi connection failed" + " | SSID: " + CONFIGURED_SSID);
+
+        if (connected) {
+            LOGGER.log(Level.INFO, "Configured WiFi connected" + " | SSID: " + CONFIGURED_SSID);
+        } else {
+            LOGGER.log(Level.WARNING, "Configured WiFi connection failed" + " | SSID: " + CONFIGURED_SSID);
+        }
+
         return connected;
     }
 

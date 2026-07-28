@@ -113,7 +113,7 @@
 /** @brief Max number of entries which can be used to store Wi-Fi scan results */
 #define WIFI_RW610_MAX_AP_SCAN_COUNT	CONFIG_MAX_AP_ENTRIES
 
-#define WIFI_RW610_SCAN_RESULT_LIMIT 30U
+#define WIFI_RW610_SCAN_RESULT_LIMIT 16U
 
 #if WIFI_RW610_SCAN_RESULT_LIMIT > WIFI_RW610_MAX_AP_SCAN_COUNT
 #error "WIFI_RW610_SCAN_RESULT_LIMIT exceeds native scan buffer capacity"
