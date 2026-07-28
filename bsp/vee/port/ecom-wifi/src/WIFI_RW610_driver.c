@@ -113,7 +113,7 @@
 /** @brief Max number of entries which can be used to store Wi-Fi scan results */
 #define WIFI_RW610_MAX_AP_SCAN_COUNT	CONFIG_MAX_AP_ENTRIES
 
-#define WIFI_RW610_SCAN_RESULT_LIMIT 16U
+#define WIFI_RW610_SCAN_RESULT_LIMIT 5U
 
 #if WIFI_RW610_SCAN_RESULT_LIMIT > WIFI_RW610_MAX_AP_SCAN_COUNT
 #error "WIFI_RW610_SCAN_RESULT_LIMIT exceeds native scan buffer capacity"
@@ -1011,6 +1011,8 @@ bool WIFI_RW610_disable_softap_f(void) {
     return result;
 }
 
+
+
 bool WIFI_RW610_get_ap_count_f(int32_t* ap_count, int8_t active) {
     WIFI_RW610_DEBUG_TRACE("(%s) start\n", __func__);
     bool result = false;
@@ -1024,7 +1026,21 @@ bool WIFI_RW610_get_ap_count_f(int32_t* ap_count, int8_t active) {
     if (err){
     	WIFI_RW610_DEBUG_TRACE("Failed to launch scan. (err=%d)\n", err);
     } else {
+    PRINTF(
+            "[MEM] Before WiFi scan"
+            " | free=%u"
+            " | minimum=%u\r\n",
+            (unsigned int)xPortGetFreeHeapSize(),
+            (unsigned int)xPortGetMinimumEverFreeHeapSize()
+    );
     	WIFI_RW610_DEBUG_TRACE("Scanning\n");
+    PRINTF(
+            "[MEM] After WiFi scan"
+            " | free=%u"
+            " | minimum=%u\r\n",
+            (unsigned int)xPortGetFreeHeapSize(),
+            (unsigned int)xPortGetMinimumEverFreeHeapSize()
+    );
     }
 
     sync_bit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SCAN_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_MS);

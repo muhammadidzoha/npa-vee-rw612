@@ -75,7 +75,7 @@
  * LoRa smoke test configuration.
  */
 #define lora_test_task_PRIORITY (tskIDLE_PRIORITY + 1U)
-#define LORA_TEST_TASK_STACK_SIZE 1024U
+#define LORA_TEST_TASK_STACK_SIZE 768U
 
 /*
  * RFM95W menggunakan FLEXCOMM1 / SPI1.
@@ -1597,6 +1597,13 @@ int main(void)
      * Task ini tidak berinteraksi dengan Java,
      * Wi-Fi, GUI, maupun MQTT.
      */
+     PRINTF(
+             "[MEM] Before LoRa task"
+             " | free=%u"
+             " | minimum=%u\r\n",
+             (unsigned int)xPortGetFreeHeapSize(),
+             (unsigned int)xPortGetMinimumEverFreeHeapSize()
+     );
     if (xTaskCreate(
             lora_test_task,
             "LoRa_Test",
@@ -1627,6 +1634,14 @@ int main(void)
     for (;;)
         ;
 }
+
+PRINTF(
+        "[MEM] After LoRa task"
+        " | free=%u"
+        " | minimum=%u\r\n",
+        (unsigned int)xPortGetFreeHeapSize(),
+        (unsigned int)xPortGetMinimumEverFreeHeapSize()
+);
 
 static void BOARD_InitLcdicClock()
 {
