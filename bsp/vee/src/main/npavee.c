@@ -1604,6 +1604,7 @@ int main(void)
              (unsigned int)xPortGetFreeHeapSize(),
              (unsigned int)xPortGetMinimumEverFreeHeapSize()
      );
+
     if (xTaskCreate(
             lora_test_task,
             "LoRa_Test",
@@ -1616,6 +1617,14 @@ int main(void)
         PRINTF(
             "[LORA] ERROR: task creation failed.\r\n");
     }
+
+    PRINTF(
+            "[MEM] After LoRa task"
+            " | free=%u"
+            " | minimum=%u\r\n",
+            (unsigned int)xPortGetFreeHeapSize(),
+            (unsigned int)xPortGetMinimumEverFreeHeapSize()
+    );
 
     /* Enable crypto accelerator */
     status_t status = CRYPTO_InitHardware();
@@ -1634,14 +1643,6 @@ int main(void)
     for (;;)
         ;
 }
-
-PRINTF(
-        "[MEM] After LoRa task"
-        " | free=%u"
-        " | minimum=%u\r\n",
-        (unsigned int)xPortGetFreeHeapSize(),
-        (unsigned int)xPortGetMinimumEverFreeHeapSize()
-);
 
 static void BOARD_InitLcdicClock()
 {
