@@ -213,6 +213,10 @@ public class MainPage extends Container {
         return this.wifiOpen;
     }
 
+    public boolean isSensorDetailOpen() {
+        return this.sensorDetailOpen;
+    }
+
     public void openMenu() {
         this.wifiOpen = false;
         this.menuOpen = true;

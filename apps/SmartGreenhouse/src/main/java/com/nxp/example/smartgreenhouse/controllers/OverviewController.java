@@ -34,6 +34,10 @@ public class OverviewController implements HorizontalSwipeListener, FooterOvervi
         mainPage.setOnMenuContainerSwipeListener(this);
     }
 
+    public void refresh() {
+        updateDisplay();
+    }
+
     public void setSensorNodes(SensorData[] nodes) {
         int selectedNodeId = getCurrentNodeId();
 

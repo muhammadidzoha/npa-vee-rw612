@@ -40,6 +40,27 @@ public final class SensorDataStore {
         this.nodes = validNodes;
     }
 
+    public void upsert(SensorData data) {
+        if (data == null) {
+            return;
+        }
+
+        int existingIndex = findNodeIndexById(data.getNodeId());
+
+        if (existingIndex >= 0) {
+            this.nodes[existingIndex] = data;
+            return;
+        }
+
+        SensorData[] updatedNodes = new SensorData[this.nodes.length + 1];
+
+        System.arraycopy(this.nodes, 0, updatedNodes, 0, this.nodes.length);
+
+        updatedNodes[this.nodes.length] = data;
+
+        this.nodes = updatedNodes;
+    }
+
     public int getNodeCount() {
         return this.nodes.length;
     }

@@ -33,6 +33,24 @@ public class SensorDetailController implements SensorDetail.onBackListener, Hori
         this.mainPage.setOnSensorDetailSwipeListener(this);
     }
 
+    public void refreshIfOpen() {
+        if (!this.mainPage.isSensorDetailOpen()) {
+            return;
+        }
+
+        int selectedNodeId = this.appState.getSelectedNodeId();
+
+        int selectedNodeIndex = this.sensorDataStore.findNodeIndexById(selectedNodeId);
+
+        if (selectedNodeIndex < 0) {
+            return;
+        }
+
+        this.currentNodeIndex = selectedNodeIndex;
+
+        refreshSelectedSensor();
+    }
+
     public void openSelectedSensor() {
         MenuItemData selectedMenuItem = this.appState.getSelectedMenuItem();
 

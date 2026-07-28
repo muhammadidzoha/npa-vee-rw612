@@ -35,6 +35,8 @@ public class HeaderController implements
 
     private Timer clockTimer;
 
+    private Runnable periodicTask;
+
     private int wifiScanRequestId;
 
     public HeaderController(MainPage mainPage) {
@@ -45,6 +47,7 @@ public class HeaderController implements
         this.wifiConnectionRunning = false;
 
         this.clockTimer = null;
+        this.periodicTask = null;
 
         this.wifiScanRequestId = 0;
     }
@@ -60,6 +63,10 @@ public class HeaderController implements
         this.mainPage.setOnWifiConnectClick(this);
 
         checkWifiHardware();
+    }
+
+    public void setPeriodicTask(Runnable periodicTask) {
+        this.periodicTask = periodicTask;
     }
 
     @Override
@@ -294,6 +301,18 @@ public class HeaderController implements
                                     @Override
                                     public void run() {
                                         HeaderController.this.mainPage.updateTime(currentTime);
+                                        Runnable task = HeaderController.this.periodicTask;
+                                        if (task == null) {
+                                            return;
+                                        }
+                                        try {
+                                            task.run();
+                                        } catch (
+                                                RuntimeException exception
+                                        ) {
+                                            LOGGER.log(Level.WARNING, "Periodic application task failed: " + exception
+                                            );
+                                        }
                                     }
                                 }
                         );
