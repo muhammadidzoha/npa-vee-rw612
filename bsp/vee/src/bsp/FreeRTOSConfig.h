@@ -72,9 +72,11 @@
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 /* this is the basic need */
 #define configBASE_HEAP_SIZE                   ((size_t)(33 * 1024))
-#define configNET_HEAP_SIZE                    ((size_t)(14 * 1024))
+//#define configNET_HEAP_SIZE                    ((size_t)(14 * 1024)) aslinya
+#define configNET_HEAP_SIZE ((size_t)(32 * 1024))
 #ifdef ENABLE_WIFI
-#define configWIFI_HEAP_SIZE                   ((size_t)(21 * 1024))
+//#define configWIFI_HEAP_SIZE                   ((size_t)(21 * 1024)) aslinya
+#define configWIFI_HEAP_SIZE ((size_t)(48 * 1024))
 #else
 #define configWIFI_HEAP_SIZE                   ((size_t)(0))
 #endif
