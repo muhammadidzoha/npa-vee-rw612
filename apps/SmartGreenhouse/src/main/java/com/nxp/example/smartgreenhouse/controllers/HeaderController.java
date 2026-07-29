@@ -4,6 +4,9 @@ import com.nxp.example.smartgreenhouse.services.wifi.WifiHardwareService;
 import com.nxp.example.smartgreenhouse.utils.Time;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 
+import android.net.SntpClient;
+import ej.bon.Util;
+
 import ej.bon.Timer;
 import ej.bon.TimerTask;
 import ej.ecom.wifi.WifiCapability;
@@ -25,6 +28,12 @@ public class HeaderController {
     private Runnable wifiConnectedTask;
 
     private boolean wifiConnectionRunning;
+
+    private static final String NTP_SERVER = "0.pool.ntp.org";
+
+    private static final int NTP_PORT = 123;
+
+    private static final int NTP_TIMEOUT_MS = 5000;
 
     public HeaderController(MainPage mainPage) {
         if (mainPage == null) {
@@ -74,6 +83,9 @@ public class HeaderController {
                                     WifiCapability capability = HeaderController.this.wifiService.getCapability();
                                     LOGGER.log(Level.INFO, "WiFi capability: " + capability);
                                     connected = HeaderController.this.wifiService.connectConfiguredNetwork();
+                                    if (connected) {
+                                        HeaderController.this.synchronizeApplicationTime();
+                                    }
                                     errorMessage = connected ? null : "Configured network" + " was not joined.";
                                 } catch (Exception exception) {
                                     connected = false;
@@ -158,5 +170,55 @@ public class HeaderController {
                 0,
                 1000
         );
+    }
+
+    private boolean synchronizeApplicationTime() {
+        LOGGER.log(Level.INFO,
+                "Synchronizing network time"
+                        + " | server="
+                        + NTP_SERVER
+                        + " | port="
+                        + NTP_PORT
+        );
+
+        try {
+            SntpClient sntpClient = new SntpClient();
+            boolean requestSuccessful = sntpClient.requestTime(NTP_SERVER, NTP_PORT, NTP_TIMEOUT_MS);
+
+            if (!requestSuccessful) {
+                LOGGER.log(
+                        Level.WARNING,
+                        "Network time synchronization failed"
+                                + " | server="
+                                + NTP_SERVER
+                );
+
+                return false;
+            }
+
+            long networkTime = sntpClient.getNtpTime() + Util.platformTimeMillis() - sntpClient.getNtpTimeReference();
+            Util.setCurrentTimeMillis(networkTime);
+
+            LOGGER.log(
+                    Level.INFO,
+                    "Network time synchronized"
+                            + " | epochMs="
+                            + System.currentTimeMillis()
+                            + " | JakartaTime="
+                            + Time.formatCurrentTime()
+            );
+
+            return true;
+
+        } catch (RuntimeException exception) {
+            LOGGER.log(
+                    Level.WARNING,
+                    "Network time synchronization error"
+                            + " | error="
+                            + exception
+            );
+
+            return false;
+        }
     }
 }

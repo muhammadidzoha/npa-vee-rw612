@@ -9,7 +9,9 @@ public final class ActuatorDisplayFormatter {
     private static final int MINUTES_PER_HOUR = 60;
     private static final String EMPTY_VALUE = "-";
 
-    private static final TimeZone JAKARTA_TIME_ZONE = TimeZone.getTimeZone("GMT+07:00");
+    private static final long JAKARTA_OFFSET_MILLIS = 7L * 60L * 60L * 1000L;
+
+    private static final TimeZone UTC_TIME_ZONE = TimeZone.getTimeZone("GMT");
 
     private static final String[] MONTH_NAMES = {
             "Januari",
@@ -26,7 +28,7 @@ public final class ActuatorDisplayFormatter {
             "Desember"
     };
 
-    private static final Calendar CALENDAR = Calendar.getInstance(JAKARTA_TIME_ZONE);
+    private static final Calendar CALENDAR = Calendar.getInstance(UTC_TIME_ZONE);
 
     private ActuatorDisplayFormatter() {}
 
@@ -35,7 +37,7 @@ public final class ActuatorDisplayFormatter {
             return EMPTY_VALUE;
         }
 
-        CALENDAR.setTimeInMillis(timestamp);
+        CALENDAR.setTimeInMillis(timestamp + JAKARTA_OFFSET_MILLIS);
 
         int hour = CALENDAR.get(Calendar.HOUR_OF_DAY);
         int minute = CALENDAR.get(Calendar.MINUTE);
@@ -47,7 +49,7 @@ public final class ActuatorDisplayFormatter {
             return EMPTY_VALUE;
         }
 
-        CALENDAR.setTimeInMillis(timestamp);
+        CALENDAR.setTimeInMillis(timestamp + JAKARTA_OFFSET_MILLIS);
 
         int day = CALENDAR.get(Calendar.DAY_OF_MONTH);
         int monthIndex = CALENDAR.get(Calendar.MONTH);
