@@ -18,6 +18,14 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
 
     private ActuatorDisplayItem currentDisplayItem;
 
+    private static final int MAX_VALVE_ID = 2;
+    private final boolean[] valveControlPending = new boolean[MAX_VALVE_ID + 1];
+    private final boolean[] pendingTargetState = new boolean[MAX_VALVE_ID + 1];
+    private final boolean[] rollbackAvailable = new boolean[MAX_VALVE_ID + 1];
+    private final boolean[] rollbackOpen = new boolean[MAX_VALVE_ID + 1];
+    private final long[] rollbackLastOpenedAt = new long[MAX_VALVE_ID + 1];
+    private final long[] rollbackLastUpdated = new long[MAX_VALVE_ID + 1];
+
     public ActuatorDetailController(MainPage mainPage, AppState appState, ActuatorDataStore actuatorDataStore) {
         this.mainPage = mainPage;
         this.appState = appState;
@@ -116,13 +124,88 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
             return;
         }
 
+        int valveId = valveData.getValveId();
+
+        if (valveId < 1 || valveId > MAX_VALVE_ID) {
+            refreshSelectedActuator();
+            return;
+        }
+
         if (this.mqttSubscribeService == null) {
             refreshSelectedActuator();
             return;
         }
 
-        this.mqttSubscribeService.requestValveControl(valveData.getValveId(), targetState);
+        if (this.valveControlPending[valveId]) {
+            refreshSelectedActuator();
+            return;
+        }
+
+        this.rollbackAvailable[valveId] = valveData.isAvailable();
+        this.rollbackOpen[valveId] = valveData.isOpen();
+        this.rollbackLastOpenedAt[valveId] = valveData.getLastOpenedAt();
+        this.rollbackLastUpdated[valveId] = valveData.getLastUpdated();
+        this.pendingTargetState[valveId] = targetState;
+        this.valveControlPending[valveId] = true;
+
+        valveData.updateState(targetState, System.currentTimeMillis());
         refreshSelectedActuator();
+
+        boolean queued = this.mqttSubscribeService.requestValveControl(valveId, targetState);
+        if (!queued) {
+            onValveControlPublishFailed(valveId, targetState);
+        }
+    }
+
+    public void onValveControlPublished(int valveId, boolean targetState) {
+        if (valveId < 1 || valveId > MAX_VALVE_ID) {
+            return;
+        }
+
+        if (!this.valveControlPending[valveId]) {
+            return;
+        }
+
+        if (this.pendingTargetState[valveId] != targetState) {
+            return;
+        }
+
+        this.valveControlPending[valveId] = false;
+    }
+
+    public void onValveControlPublishFailed(int valveId, boolean targetState) {
+        if (valveId < 1 || valveId > MAX_VALVE_ID) {
+            return;
+        }
+
+        if (!this.valveControlPending[valveId]) {
+            return;
+        }
+
+        if (this.pendingTargetState[valveId] != targetState) {
+            return;
+        }
+
+        ValveData valveData = this.actuatorDataStore.getValveByTrayId(valveId);
+        if (valveData != null) {
+            valveData.restoreState(
+                    this.rollbackAvailable[valveId],
+                    this.rollbackOpen[valveId],
+                    this.rollbackLastOpenedAt[valveId],
+                    this.rollbackLastUpdated[valveId]
+            );
+        }
+
+        this.valveControlPending[valveId] = false;
+        refreshIfOpen();
+    }
+
+    public void onValveStatusApplied(int valveId, boolean open) {
+        if (valveId < 1 || valveId > MAX_VALVE_ID) {
+            return;
+        }
+
+        this.valveControlPending[valveId] = false;
     }
 
     @Override

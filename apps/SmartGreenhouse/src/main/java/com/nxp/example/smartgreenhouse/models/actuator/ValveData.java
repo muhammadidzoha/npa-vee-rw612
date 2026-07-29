@@ -56,4 +56,11 @@ public final class ValveData {
         this.available = true;
         this.lastUpdated = timestamp;
     }
+
+    public void restoreState(boolean available, boolean open, long lastOpenedAt, long lastUpdated) {
+        this.available = available;
+        this.open = open;
+        this.lastOpenedAt = lastOpenedAt;
+        this.lastUpdated = lastUpdated;
+    }
 }

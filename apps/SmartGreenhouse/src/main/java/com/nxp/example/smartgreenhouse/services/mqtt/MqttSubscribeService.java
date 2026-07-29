@@ -185,6 +185,7 @@ public final class MqttSubscribeService {
                     @Override
                     public void connectionLost(Throwable cause) {
                         MqttSubscribeService.this.subscribed = false;
+                        MqttSubscribeService.this.failAllPendingValveCommands();
                         synchronized (MqttSubscribeService.this) {
                             MqttSubscribeService.this.notifyAll();
                         }
@@ -330,11 +331,18 @@ public final class MqttSubscribeService {
 
         MqttClient client = this.mqttClient;
         if (client == null || !client.isConnected()) {
+            boolean removed = clearPendingValveCommand(valveId, targetOpen);
+
+            if (removed) {
+                notifyValveControlPublishFailed(valveId, targetOpen);
+            }
+
             return;
         }
 
         String topic = VALVE_CONTROL_TOPIC_PREFIX + valveId;
         String payloadText = targetOpen ? "1" : "0";
+
         LOGGER.log(
                 Level.INFO,
                 "[MQTT] Publishing valve control"
@@ -348,11 +356,21 @@ public final class MqttSubscribeService {
                         + CONTROL_RETAINED
         );
 
-        client.publish(topic, payloadText.getBytes(), CONTROL_QOS, CONTROL_RETAINED);
-        synchronized (this) {
-            if (this.pendingValveCommands[valveId] && this.pendingValveStates[valveId] == targetOpen) {
-                this.pendingValveCommands[valveId] = false;
+        try {
+            client.publish(topic, payloadText.getBytes(), CONTROL_QOS, CONTROL_RETAINED);
+        } catch (MqttException exception) {
+            boolean removed = clearPendingValveCommand(valveId, targetOpen);
+
+            if (removed) {
+                notifyValveControlPublishFailed(valveId, targetOpen);
             }
+
+            throw exception;
+        }
+
+        boolean removed = clearPendingValveCommand(valveId, targetOpen);
+        if (removed) {
+            notifyValveControlPublished(valveId, targetOpen);
         }
 
         LOGGER.log(
@@ -363,6 +381,71 @@ public final class MqttSubscribeService {
                         + " | payload="
                         + payloadText
         );
+    }
+
+    private synchronized boolean clearPendingValveCommand(int valveId, boolean targetOpen) {
+        if (!this.pendingValveCommands[valveId]) {
+            return false;
+        }
+
+        if (this.pendingValveStates[valveId] != targetOpen) {
+            return false;
+        }
+
+        this.pendingValveCommands[valveId] = false;
+        return true;
+    }
+
+    private void notifyValveControlPublished(final int valveId, final boolean targetOpen) {
+        MicroUI.callSerially(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        MqttSubscribeService.this.actuatorDetailController.onValveControlPublished(valveId, targetOpen);
+                    }
+                }
+        );
+    }
+
+    private void notifyValveControlPublishFailed(final int valveId, final boolean targetOpen) {
+        LOGGER.log(
+                Level.WARNING,
+                "[MQTT] Valve control publish failed"
+                        + " | valveId="
+                        + valveId
+                        + " | target="
+                        + (targetOpen
+                        ? "ON"
+                        : "OFF")
+        );
+
+        MicroUI.callSerially(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        MqttSubscribeService.this.actuatorDetailController.onValveControlPublishFailed(valveId, targetOpen);
+                    }
+                }
+        );
+    }
+
+    private void failAllPendingValveCommands() {
+        for (int valveId = MIN_VALVE_ID; valveId <= MAX_VALVE_ID; valveId++) {
+            final boolean pending;
+            final boolean targetOpen;
+
+            synchronized (this) {
+                pending = this.pendingValveCommands[valveId];
+                targetOpen = this.pendingValveStates[valveId];
+                if (pending) {
+                    this.pendingValveCommands[valveId] = false;
+                }
+            }
+
+            if (pending) {
+                notifyValveControlPublishFailed(valveId, targetOpen);
+            }
+        }
     }
 
     private void handleValveStatus(String topic, String payloadText) {
