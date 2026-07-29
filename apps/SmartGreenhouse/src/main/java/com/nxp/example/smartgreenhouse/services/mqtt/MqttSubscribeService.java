@@ -483,13 +483,12 @@ public final class MqttSubscribeService {
                 new Runnable() {
                     @Override
                     public void run() {
-                        boolean updated =
-                                MqttSubscribeService.this.actuatorDataStore.updateValveState(valveId, open, receivedTimestamp);
+                        boolean updated = MqttSubscribeService.this.actuatorDataStore.updateValveState(valveId, open, receivedTimestamp);
                         if (!updated) {
                             LOGGER.log(Level.WARNING, "Valve was not found" + " | valveId=" + valveId);
                             return;
                         }
-
+                        MqttSubscribeService.this.actuatorDetailController.onValveStatusApplied(valveId, open);
                         MqttSubscribeService.this.actuatorDetailController.refreshIfOpen();
                         LOGGER.log(
                                 Level.INFO,
