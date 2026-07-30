@@ -1,18 +1,12 @@
 package com.nxp.example.smartgreenhouse.models.actuator;
 
 import java.util.Calendar;
-import java.util.TimeZone;
 
 public final class ActuatorDisplayFormatter {
 
     private static final long MILLIS_PER_MINUTE = 60_000L;
     private static final int MINUTES_PER_HOUR = 60;
     private static final String EMPTY_VALUE = "-";
-
-    private static final long JAKARTA_OFFSET_MILLIS = 7L * 60L * 60L * 1000L;
-
-    private static final TimeZone UTC_TIME_ZONE = TimeZone.getTimeZone("GMT");
-
     private static final String[] MONTH_NAMES = {
             "Januari",
             "Februari",
@@ -28,7 +22,7 @@ public final class ActuatorDisplayFormatter {
             "Desember"
     };
 
-    private static final Calendar CALENDAR = Calendar.getInstance(UTC_TIME_ZONE);
+    private static final Calendar CALENDAR = Calendar.getInstance();
 
     private ActuatorDisplayFormatter() {}
 
@@ -37,7 +31,7 @@ public final class ActuatorDisplayFormatter {
             return EMPTY_VALUE;
         }
 
-        CALENDAR.setTimeInMillis(timestamp + JAKARTA_OFFSET_MILLIS);
+        CALENDAR.setTimeInMillis(timestamp);
 
         int hour = CALENDAR.get(Calendar.HOUR_OF_DAY);
         int minute = CALENDAR.get(Calendar.MINUTE);
@@ -49,7 +43,7 @@ public final class ActuatorDisplayFormatter {
             return EMPTY_VALUE;
         }
 
-        CALENDAR.setTimeInMillis(timestamp + JAKARTA_OFFSET_MILLIS);
+        CALENDAR.setTimeInMillis(timestamp);
 
         int day = CALENDAR.get(Calendar.DAY_OF_MONTH);
         int monthIndex = CALENDAR.get(Calendar.MONTH);

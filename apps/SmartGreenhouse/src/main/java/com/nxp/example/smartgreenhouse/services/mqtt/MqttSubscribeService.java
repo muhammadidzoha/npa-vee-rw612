@@ -3,7 +3,6 @@ package com.nxp.example.smartgreenhouse.services.mqtt;
 import com.nxp.example.smartgreenhouse.controllers.ActuatorDetailController;
 import com.nxp.example.smartgreenhouse.models.actuator.ActuatorDataStore;
 
-import ej.bon.Util;
 import ej.microui.MicroUI;
 
 import org.eclipse.paho.client.mqttv3.MqttCallback;
@@ -449,52 +448,24 @@ public final class MqttSubscribeService {
         }
     }
 
-    private void handleValveStatus(
-            String topic,
-            String payloadText
-    ) {
-        final int valveId =
-                parseValveId(topic);
-
-        if (valveId < MIN_VALVE_ID
-                || valveId > MAX_VALVE_ID) {
-
-            LOGGER.log(
-                    Level.WARNING,
-                    "Unsupported actuator topic"
-                            + " | topic="
-                            + topic
-            );
-
+    private void handleValveStatus(String topic, String payloadText) {
+        final int valveId = parseValveId(topic);
+        if (valveId < MIN_VALVE_ID || valveId > MAX_VALVE_ID) {
+            LOGGER.log(Level.WARNING, "Unsupported actuator topic" + " | topic=" + topic);
             return;
         }
 
         if (payloadText == null) {
-            LOGGER.log(
-                    Level.WARNING,
-                    "Empty MQTT actuator payload"
-                            + " | topic="
-                            + topic
-            );
-
+            LOGGER.log(Level.WARNING, "Empty MQTT actuator payload" + " | topic=" + topic);
             return;
         }
 
-        String normalizedPayload =
-                payloadText.trim();
-
+        String normalizedPayload = payloadText.trim();
         final boolean open;
-
-        if ("ON".equalsIgnoreCase(normalizedPayload)
-                || "1".equals(normalizedPayload)) {
-
+        if ("ON".equalsIgnoreCase(normalizedPayload) || "1".equals(normalizedPayload)) {
             open = true;
-
-        } else if ("OFF".equalsIgnoreCase(normalizedPayload)
-                || "0".equals(normalizedPayload)) {
-
+        } else if ("OFF".equalsIgnoreCase(normalizedPayload) || "0".equals(normalizedPayload)) {
             open = false;
-
         } else {
             LOGGER.log(
                     Level.WARNING,
@@ -504,52 +475,22 @@ public final class MqttSubscribeService {
                             + " | payload="
                             + payloadText
             );
-
             return;
         }
 
-        /*
-         * Mengambil application time yang sudah
-         * disinkronkan melalui NTP.
-         */
-        final long receivedTimestamp =
-                Util.currentTimeMillis();
-
+        final long receivedTimestamp = System.currentTimeMillis();
         MicroUI.callSerially(
                 new Runnable() {
                     @Override
                     public void run() {
                         boolean updated =
-                                MqttSubscribeService.this
-                                        .actuatorDataStore
-                                        .updateValveState(
-                                                valveId,
-                                                open,
-                                                receivedTimestamp
-                                        );
-
+                                MqttSubscribeService.this.actuatorDataStore.updateValveState(valveId, open, receivedTimestamp);
                         if (!updated) {
-                            LOGGER.log(
-                                    Level.WARNING,
-                                    "Valve was not found"
-                                            + " | valveId="
-                                            + valveId
-                            );
-
+                            LOGGER.log(Level.WARNING, "Valve was not found" + " | valveId=" + valveId);
                             return;
                         }
 
-                        MqttSubscribeService.this
-                                .actuatorDetailController
-                                .onValveStatusApplied(
-                                        valveId,
-                                        open
-                                );
-
-                        MqttSubscribeService.this
-                                .actuatorDetailController
-                                .refreshIfOpen();
-
+                        MqttSubscribeService.this.actuatorDetailController.refreshIfOpen();
                         LOGGER.log(
                                 Level.INFO,
                                 "[MQTT] Valve status applied"

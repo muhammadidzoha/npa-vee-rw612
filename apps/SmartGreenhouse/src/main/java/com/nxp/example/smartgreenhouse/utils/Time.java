@@ -1,69 +1,31 @@
 package com.nxp.example.smartgreenhouse.utils;
 
-import ej.bon.Util;
-
-import java.util.Calendar;
-import java.util.TimeZone;
-
 public final class Time {
 
-    /*
-     * Offset Asia/Jakarta:
-     * UTC + 7 jam.
-     */
-    private static final long JAKARTA_OFFSET_MILLIS =
-            7L * 60L * 60L * 1000L;
+    private static final long MILLIS_PER_SECOND = 1000L;
+    private static final long SECONDS_PER_MINUTE = 60L;
+    private static final long MINUTES_PER_HOUR = 60L;
+    private static final long HOURS_PER_DAY = 24L;
 
-    /*
-     * Calendar menggunakan UTC karena offset Jakarta
-     * ditambahkan secara eksplisit.
-     */
-    private static final TimeZone UTC_TIME_ZONE =
-            TimeZone.getTimeZone("GMT");
+    private static final long WIB_OFFSET_MILLIS = 7L * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLIS_PER_SECOND;
 
-    private static final Calendar CALENDAR =
-            Calendar.getInstance(UTC_TIME_ZONE);
+    private Time() {}
 
-    private Time() {
+    public static String formatCurrentTime() {
+        long utcMillis = System.currentTimeMillis();
+        long wibMillis = utcMillis + WIB_OFFSET_MILLIS;
+
+        long totalMinutes = wibMillis / MILLIS_PER_SECOND / SECONDS_PER_MINUTE;
+        int minute = (int) (totalMinutes % MINUTES_PER_HOUR);
+        int hour = (int) ((totalMinutes / MINUTES_PER_HOUR) % HOURS_PER_DAY);
+        return twoDigits(hour) + ":" + twoDigits(minute);
     }
 
-    /**
-     * Menampilkan waktu aktual Asia/Jakarta.
-     *
-     * Method ini dipanggil setiap satu detik oleh
-     * HeaderController.
-     */
-    public static synchronized String formatCurrentTime() {
-        long jakartaTimestamp =
-                Util.currentTimeMillis()
-                        + JAKARTA_OFFSET_MILLIS;
-
-        CALENDAR.setTimeInMillis(
-                jakartaTimestamp
-        );
-
-        int hour =
-                CALENDAR.get(
-                        Calendar.HOUR_OF_DAY
-                );
-
-        int minute =
-                CALENDAR.get(
-                        Calendar.MINUTE
-                );
-
-        return formatTwoDigits(hour)
-                + ":"
-                + formatTwoDigits(minute);
-    }
-
-    private static String formatTwoDigits(
-            int value
-    ) {
+    private static String twoDigits(int value) {
         if (value < 10) {
             return "0" + value;
         }
 
-        return String.valueOf(value);
+        return Integer.toString(value);
     }
 }

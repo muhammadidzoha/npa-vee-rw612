@@ -13,8 +13,8 @@ public final class WifiHardwareService {
 
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: WIFI HARDWARE SERVICE]");
 
-    private static final String CONFIGURED_SSID = "nap";
-    private static final String CONFIGURED_PASSWORD = "napir123";
+    private static final String CONFIGURED_SSID = "Iphone 5G";
+    private static final String CONFIGURED_PASSWORD = "1sampai9";
 
     private final WifiManager wifiManager;
 

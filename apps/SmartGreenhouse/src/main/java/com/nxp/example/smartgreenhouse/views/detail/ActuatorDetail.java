@@ -543,7 +543,9 @@ public class ActuatorDetail extends Container {
 
         String updateText = "-";
         if (this.actuatorItem != null && this.actuatorItem.isDataAvailable()) {
-            updateText = this.actuatorItem.getLastUpdatedTimeText();
+            String updateDate = this.actuatorItem.getLastUpdatedDateText();
+            String updateTime = this.actuatorItem.getLastUpdatedTimeText();
+            updateText = updateDate + " | " + updateTime;
         }
         int timeWidth = this.fonts.updateFont.stringWidth(updateText);
 
