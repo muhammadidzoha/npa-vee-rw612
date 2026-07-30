@@ -4,8 +4,11 @@ import com.nxp.example.smartgreenhouse.services.wifi.WifiHardwareService;
 import com.nxp.example.smartgreenhouse.utils.Time;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 
+import android.net.SntpClient;
+
 import ej.bon.Timer;
 import ej.bon.TimerTask;
+import ej.bon.Util;
 import ej.ecom.wifi.WifiCapability;
 import ej.microui.MicroUI;
 
@@ -26,6 +29,13 @@ public class HeaderController {
 
     private boolean wifiConnectionRunning;
 
+    private static final String[] NTP_SERVERS = {"time.google.com", "0.pool.ntp.org"};
+    private static final int NTP_TIMEOUT_MS = 5000;
+    private static final long NETWORK_READY_DELAY_MS = 3000L;
+    private long headerNtpTimeMillis;
+    private long headerNtpReferenceMillis;
+    private boolean headerTimeSynchronized;
+
     public HeaderController(MainPage mainPage) {
         if (mainPage == null) {
             throw new NullPointerException("mainPage tidak boleh null.");
@@ -39,6 +49,10 @@ public class HeaderController {
         this.wifiConnectedTask = null;
 
         this.wifiConnectionRunning = false;
+
+        this.headerNtpTimeMillis = 0L;
+        this.headerNtpReferenceMillis = 0L;
+        this.headerTimeSynchronized = false;
     }
 
     public void init() {
@@ -74,6 +88,14 @@ public class HeaderController {
                                     WifiCapability capability = HeaderController.this.wifiService.getCapability();
                                     LOGGER.log(Level.INFO, "WiFi capability: " + capability);
                                     connected = HeaderController.this.wifiService.connectConfiguredNetwork();
+                                    if (connected) {
+                                        LOGGER.log(Level.INFO, "WiFi connected" + " | waiting for network before NTP");
+                                        Thread.sleep(NETWORK_READY_DELAY_MS);
+                                        boolean timeSynchronized = HeaderController.this.synchronizeHeaderTime();
+                                        if (!timeSynchronized) {
+                                            LOGGER.log(Level.WARNING, "WiFi connected but header time" + " was not synchronized.");
+                                        }
+                                    }
                                     errorMessage = connected ? null : "Configured network" + " was not joined.";
                                 } catch (Exception exception) {
                                     connected = false;
@@ -130,7 +152,8 @@ public class HeaderController {
                 new TimerTask() {
                     @Override
                     public void run() {
-                        final String currentTime = Time.formatCurrentTime();
+                        long currentUtcMillis = HeaderController.this.getCurrentHeaderUtcMillis();
+                        final String currentTime = Time.formatJakartaTime(currentUtcMillis);
                         MicroUI.callSerially(
                                 new Runnable() {
                                     @Override
@@ -143,12 +166,7 @@ public class HeaderController {
                                         try {
                                             task.run();
                                         } catch (RuntimeException exception) {
-                                            LOGGER.log(
-                                                    Level.WARNING,
-                                                    "Periodic application"
-                                                            + " task failed: "
-                                                            + exception
-                                            );
+                                            LOGGER.log(Level.WARNING, "Periodic application" + " task failed: " + exception);
                                         }
                                     }
                                 }
@@ -158,5 +176,72 @@ public class HeaderController {
                 0,
                 1000
         );
+    }
+
+    private synchronized void setHeaderNtpTime(long ntpTimeMillis, long ntpReferenceMillis) {
+        this.headerNtpTimeMillis = ntpTimeMillis;
+        this.headerNtpReferenceMillis = ntpReferenceMillis;
+        this.headerTimeSynchronized = true;
+    }
+
+    private synchronized long getCurrentHeaderUtcMillis() {
+        if (!this.headerTimeSynchronized) {
+            return 0L;
+        }
+
+        long elapsedMillis = Util.platformTimeMillis() - this.headerNtpReferenceMillis;
+        if (elapsedMillis < 0L) {
+            elapsedMillis =
+                    0L;
+        }
+
+        return this.headerNtpTimeMillis + elapsedMillis;
+    }
+
+    private boolean synchronizeHeaderTime() {
+        for (int index = 0; index < NTP_SERVERS.length; index++) {
+            String server = NTP_SERVERS[index];
+            LOGGER.log(Level.INFO, "Synchronizing header time" + " | server=" + server);
+            try {
+                SntpClient client = new SntpClient();
+                boolean successful = client.requestTime(server, NTP_TIMEOUT_MS);
+                if (!successful) {
+                    LOGGER.log(Level.WARNING, "NTP request failed" + " | server=" + server);
+                    continue;
+                }
+                setHeaderNtpTime(client.getNtpTime(), client.getNtpTimeReference());
+                long currentUtcMillis = getCurrentHeaderUtcMillis();
+
+                Util.setCurrentTimeMillis(currentUtcMillis);
+                LOGGER.log(
+                        Level.INFO,
+                        "Header time synchronized"
+                                + " | server="
+                                + server
+                                + " | utcMillis="
+                                + currentUtcMillis
+                                + " | jakartaTime="
+                                + Time.formatJakartaTime(
+                                currentUtcMillis
+                        )
+                                + " | roundTripMs="
+                                + client.getRoundTripTime()
+                );
+
+                return true;
+            } catch (RuntimeException exception) {
+                LOGGER.log(
+                        Level.WARNING,
+                        "NTP synchronization error"
+                                + " | server="
+                                + server
+                                + " | error="
+                                + exception
+                );
+            }
+        }
+
+        LOGGER.log(Level.WARNING, "Header time synchronization failed.");
+        return false;
     }
 }
