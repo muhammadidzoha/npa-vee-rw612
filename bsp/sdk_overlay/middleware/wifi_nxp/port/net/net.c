@@ -8,6 +8,16 @@
  *
  */
 
+/*
+ * MicroEJ NET already initializes the lwIP TCP/IP stack.
+ * Prevent the Wi-Fi middleware from initializing it again.
+ */
+#ifdef CONFIG_NO_WIFI_TCPIP_INIT
+#undef CONFIG_NO_WIFI_TCPIP_INIT
+#endif
+
+#define CONFIG_NO_WIFI_TCPIP_INIT 1
+
 #include <inttypes.h>
 #include "wifi.h"
 #include <osa.h>
@@ -28,21 +38,6 @@
 #include <lwip/stats.h>
 
 #include <wmlog.h>
-
-/*
- * MicroEJ NET already initializes the lwIP TCP/IP stack.
- * Prevent the Wi-Fi middleware from initializing it again.
- */
-#ifdef CONFIG_NO_WIFI_TCPIP_INIT
-#undef CONFIG_NO_WIFI_TCPIP_INIT
-#endif
-
-#define CONFIG_NO_WIFI_TCPIP_INIT 1
-
-#if CONFIG_NO_WIFI_TCPIP_INIT != 1
-#error "CONFIG_NO_WIFI_TCPIP_INIT must be 1 for the MicroEJ NET integration"
-#endif
-
 #define net_e(...) wmlog_e("net", ##__VA_ARGS__)
 
 #if CONFIG_NET_DEBUG
