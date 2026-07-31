@@ -3,6 +3,7 @@ package com.nxp.example.smartgreenhouse.controllers;
 import com.nxp.example.smartgreenhouse.services.wifi.WifiHardwareService;
 import com.nxp.example.smartgreenhouse.utils.Time;
 import com.nxp.example.smartgreenhouse.views.MainPage;
+import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
 
 import android.net.SntpClient;
 
@@ -10,6 +11,7 @@ import ej.bon.Timer;
 import ej.bon.TimerTask;
 import ej.bon.Util;
 import ej.ecom.wifi.WifiCapability;
+import ej.ecom.wifi.AccessPoint;
 import ej.microui.MicroUI;
 
 import java.util.logging.Level;
@@ -28,10 +30,13 @@ public class HeaderController {
     private Runnable wifiConnectedTask;
 
     private boolean wifiConnectionRunning;
+    private volatile boolean provisioningSmokeTestRunning;
 
     private static final String[] NTP_SERVERS = {"time.google.com", "0.pool.ntp.org"};
     private static final int NTP_TIMEOUT_MS = 5000;
     private static final long NETWORK_READY_DELAY_MS = 3000L;
+    private static final long PROVISIONING_SOFT_AP_TEST_DURATION_MS = 60000L;
+    private static final long PROVISIONING_CLIENT_RESTART_DELAY_MS = 1500L;
     private long headerNtpTimeMillis;
     private long headerNtpReferenceMillis;
     private boolean headerTimeSynchronized;
@@ -49,6 +54,7 @@ public class HeaderController {
         this.wifiConnectedTask = null;
 
         this.wifiConnectionRunning = false;
+        this.provisioningSmokeTestRunning = false;
 
         this.headerNtpTimeMillis = 0L;
         this.headerNtpReferenceMillis = 0L;
@@ -57,6 +63,7 @@ public class HeaderController {
 
     public void init() {
         this.mainPage.updateWifiConnectionStatus(false);
+        registerProvisioningSmokeTestListener();
         startClock();
         connectConfiguredWifi();
     }
@@ -67,6 +74,174 @@ public class HeaderController {
 
     public void setWifiConnectedTask(Runnable wifiConnectedTask) {
         this.wifiConnectedTask = wifiConnectedTask;
+    }
+
+    private void registerProvisioningSmokeTestListener() {
+        this.mainPage.setOnWifiClick(
+                new HeaderOverview.onWifiClickListener() {
+                    @Override
+                    public void onClicked() {
+                        HeaderController.this.startProvisioningSmokeTest();
+                    }
+                }
+        );
+    }
+
+    private void startProvisioningSmokeTest() {
+        if (this.provisioningSmokeTestRunning) {
+            LOGGER.log(Level.WARNING, "Provisioning smoke test ignored" + " | test is already running");
+            return;
+        }
+
+        if (this.wifiConnectionRunning) {
+            LOGGER.log(Level.WARNING, "Provisioning smoke test ignored" + " | automatic WiFi connection" + " is still running");
+            return;
+        }
+
+        this.provisioningSmokeTestRunning = true;
+        this.mainPage.updateWifiConnectionStatus(false);
+
+        LOGGER.log(Level.INFO, "Provisioning smoke test requested");
+        Thread worker =
+                new Thread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                HeaderController.this.runProvisioningSmokeTest();
+                            }
+                        }, "wifi-provisioning-smoke-test"
+                );
+        try {
+            worker.start();
+        } catch (Error error) {
+            this.provisioningSmokeTestRunning = false;
+            LOGGER.log(Level.SEVERE, "Unable to start provisioning" + " smoke test worker" + " | error=" + error);
+        }
+    }
+
+    private void runProvisioningSmokeTest() {
+        boolean reconnected = false;
+        String testError = null;
+        try {
+            LOGGER.log(Level.INFO, "Provisioning smoke test started");
+            AccessPoint[] accessPoints = this.wifiService.scanProvisioningNetworks();
+            logProvisioningNetworks(accessPoints);
+            this.wifiService.startProvisioningAccessPoint();
+            LOGGER.log(
+                    Level.INFO,
+                    "Provisioning SoftAP smoke test active"
+                            + " | SSID="
+                            + this.wifiService
+                            .getProvisioningSsid()
+                            + " | password="
+                            + this.wifiService
+                            .getProvisioningPassword()
+                            + " | durationMs="
+                            + PROVISIONING_SOFT_AP_TEST_DURATION_MS
+            );
+            Thread.sleep(PROVISIONING_SOFT_AP_TEST_DURATION_MS);
+            LOGGER.log(Level.INFO, "Provisioning SoftAP smoke test" + " duration completed");
+        } catch (InterruptedException exception) {
+            testError = "Provisioning worker interrupted" + " | error=" + exception;
+        } catch (Exception exception) {
+            testError = "Provisioning smoke test failed" + " | error=" + exception;
+        } finally {
+            try {
+                this.wifiService.stopProvisioningAccessPoint();
+            } catch (Exception exception) {
+                LOGGER.log(Level.WARNING, "Unable to stop provisioning SoftAP" + " | error=" + exception);
+                if (testError == null) {
+                    testError = "Unable to stop SoftAP" + " | error=" + exception;
+                }
+            }
+            try {
+                Thread.sleep(PROVISIONING_CLIENT_RESTART_DELAY_MS);
+            } catch (InterruptedException exception) {
+                LOGGER.log(Level.WARNING, "Provisioning reconnect delay" + " interrupted" + " | error=" + exception);
+            }
+            try {
+                LOGGER.log(
+                        Level.INFO,
+                        "Reconnecting configured WiFi"
+                                + " after provisioning test"
+                                + " | SSID="
+                                + this.wifiService
+                                .getConfiguredSsid()
+                );
+
+                reconnected = this.wifiService.connectConfiguredNetwork();
+                if (reconnected) {
+                    Thread.sleep(NETWORK_READY_DELAY_MS);
+                    boolean timeSynchronized = synchronizeHeaderTime();
+                    if (!timeSynchronized) {
+                        LOGGER.log(Level.WARNING, "WiFi reconnected after" + " provisioning test," + " but NTP failed");
+                    }
+                }
+            } catch (InterruptedException exception) {
+                LOGGER.log(Level.WARNING, "Post-provisioning network delay" + " interrupted" + " | error=" + exception);
+                if (testError == null) {
+                    testError = "Reconnect delay interrupted" + " | error=" + exception;
+                }
+            } catch (Exception exception) {
+                LOGGER.log(Level.WARNING, "Configured WiFi reconnect failed" + " after provisioning test" + " | error=" + exception);
+                if (testError == null) {
+                    testError = "Configured WiFi reconnect failed" + " | error=" + exception;
+                }
+            }
+        }
+
+        final boolean finalReconnectResult = reconnected;
+        final String finalTestError = testError;
+        MicroUI.callSerially(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        HeaderController.this.provisioningSmokeTestRunning = false;
+                        HeaderController.this.mainPage.updateWifiConnectionStatus(finalReconnectResult);
+                        if (finalTestError == null) {
+                            LOGGER.log(
+                                    Level.INFO,
+                                    "Provisioning smoke test"
+                                            + " completed successfully"
+                                            + " | WiFi reconnected="
+                                            + finalReconnectResult
+                            );
+                        } else {
+                            LOGGER.log(
+                                    Level.WARNING,
+                                    "Provisioning smoke test"
+                                            + " completed with error"
+                                            + " | WiFi reconnected="
+                                            + finalReconnectResult
+                                            + " | error="
+                                            + finalTestError
+                            );
+                        }
+                    }
+                }
+        );
+    }
+
+    private static void logProvisioningNetworks(AccessPoint[] accessPoints) {
+        if (accessPoints == null || accessPoints.length == 0) {
+            LOGGER.log(Level.WARNING, "No provisioning WiFi network found");
+            return;
+        }
+
+        LOGGER.log(Level.INFO, "Provisioning networks selected" + " | count=" + accessPoints.length);
+        for (int index = 0; index < accessPoints.length; index++) {
+            AccessPoint accessPoint = accessPoints[index];
+            LOGGER.log(
+                    Level.INFO,
+                    "Provisioning network"
+                            + " | index="
+                            + index
+                            + " | SSID="
+                            + accessPoint.getSSID()
+                            + " | RSSI="
+                            + accessPoint.getRSSI()
+            );
+        }
     }
 
     private void connectConfiguredWifi() {

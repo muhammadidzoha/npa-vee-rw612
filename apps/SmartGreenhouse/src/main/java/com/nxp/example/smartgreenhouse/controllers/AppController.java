@@ -13,6 +13,8 @@ import com.nxp.example.smartgreenhouse.views.MainPage;
 
 public class AppController {
 
+    private static final boolean ENABLE_MQTT_DURING_PROVISIONING_SMOKE_TEST = false;
+
     private final MainPage mainPage;
 
     private final HeaderController headerController;
@@ -49,14 +51,16 @@ public class AppController {
                     }
                 }
         );
-        this.headerController.setWifiConnectedTask(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        AppController.this.mqttSubscribeService.start();
+        if (ENABLE_MQTT_DURING_PROVISIONING_SMOKE_TEST) {
+            this.headerController.setWifiConnectedTask(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            AppController.this.mqttSubscribeService.start();
+                        }
                     }
-                }
-        );
+            );
+        }
     }
 
     public MainPage getMainPage() {
