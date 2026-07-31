@@ -1,7 +1,6 @@
 package com.nxp.example.smartgreenhouse.controllers;
 
 import com.nxp.example.smartgreenhouse.services.wifi.WifiHardwareService;
-import com.nxp.example.smartgreenhouse.services.wifi.ProvisioningHttpServer;
 import com.nxp.example.smartgreenhouse.utils.Time;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
@@ -24,7 +23,6 @@ public class HeaderController {
 
     private final MainPage mainPage;
     private final WifiHardwareService wifiService;
-    private final ProvisioningHttpServer provisioningHttpServer;
 
     private Timer clockTimer;
 
@@ -50,7 +48,6 @@ public class HeaderController {
 
         this.mainPage = mainPage;
         this.wifiService = new WifiHardwareService();
-        this.provisioningHttpServer = new ProvisioningHttpServer();
         this.clockTimer = null;
 
         this.periodicTask = null;
@@ -125,43 +122,30 @@ public class HeaderController {
     private void runProvisioningSmokeTest() {
         boolean reconnected = false;
         String testError = null;
-        AccessPoint[] accessPoints = new AccessPoint[0];
-
         try {
-            LOGGER.log(Level.INFO, "Provisioning HTTP smoke test started");
-            accessPoints = this.wifiService.scanProvisioningNetworks();
+            LOGGER.log(Level.INFO, "Provisioning smoke test started");
+            AccessPoint[] accessPoints = this.wifiService.scanProvisioningNetworks();
             logProvisioningNetworks(accessPoints);
             this.wifiService.startProvisioningAccessPoint();
-            this.provisioningHttpServer.start(accessPoints);
             LOGGER.log(
                     Level.INFO,
-                    "Provisioning HTTP smoke test active"
+                    "Provisioning SoftAP smoke test active"
                             + " | SSID="
                             + this.wifiService
                             .getProvisioningSsid()
                             + " | password="
                             + this.wifiService
                             .getProvisioningPassword()
-                            + " | port=80"
                             + " | durationMs="
                             + PROVISIONING_SOFT_AP_TEST_DURATION_MS
             );
-
             Thread.sleep(PROVISIONING_SOFT_AP_TEST_DURATION_MS);
-            LOGGER.log(Level.INFO, "Provisioning HTTP smoke test" + " duration completed");
+            LOGGER.log(Level.INFO, "Provisioning SoftAP smoke test" + " duration completed");
         } catch (InterruptedException exception) {
             testError = "Provisioning worker interrupted" + " | error=" + exception;
         } catch (Exception exception) {
-            testError = "Provisioning HTTP smoke test failed" + " | error=" + exception;
+            testError = "Provisioning smoke test failed" + " | error=" + exception;
         } finally {
-            try {
-                this.provisioningHttpServer.stop();
-            } catch (RuntimeException exception) {
-                LOGGER.log(Level.WARNING, "Unable to stop provisioning HTTP server" + " | error=" + exception);
-                if (testError == null) {
-                    testError = "Unable to stop HTTP server" + " | error=" + exception;
-                }
-            }
             try {
                 this.wifiService.stopProvisioningAccessPoint();
             } catch (Exception exception) {
@@ -173,7 +157,7 @@ public class HeaderController {
             try {
                 Thread.sleep(PROVISIONING_CLIENT_RESTART_DELAY_MS);
             } catch (InterruptedException exception) {
-                LOGGER.log(Level.WARNING, "Provisioning reconnect delay interrupted" + " | error=" + exception);
+                LOGGER.log(Level.WARNING, "Provisioning reconnect delay" + " interrupted" + " | error=" + exception);
             }
             try {
                 LOGGER.log(
@@ -184,6 +168,7 @@ public class HeaderController {
                                 + this.wifiService
                                 .getConfiguredSsid()
                 );
+
                 reconnected = this.wifiService.connectConfiguredNetwork();
                 if (reconnected) {
                     Thread.sleep(NETWORK_READY_DELAY_MS);
@@ -193,61 +178,30 @@ public class HeaderController {
                     }
                 }
             } catch (InterruptedException exception) {
-                LOGGER.log(
-                        Level.WARNING,
-                        "Post-provisioning network delay"
-                                + " interrupted"
-                                + " | error="
-                                + exception
-                );
-
+                LOGGER.log(Level.WARNING, "Post-provisioning network delay" + " interrupted" + " | error=" + exception);
                 if (testError == null) {
-                    testError =
-                            "Reconnect delay interrupted"
-                                    + " | error="
-                                    + exception;
+                    testError = "Reconnect delay interrupted" + " | error=" + exception;
                 }
             } catch (Exception exception) {
-                LOGGER.log(
-                        Level.WARNING,
-                        "Configured WiFi reconnect failed"
-                                + " after provisioning test"
-                                + " | error="
-                                + exception
-                );
-
+                LOGGER.log(Level.WARNING, "Configured WiFi reconnect failed" + " after provisioning test" + " | error=" + exception);
                 if (testError == null) {
-                    testError =
-                            "Configured WiFi reconnect failed"
-                                    + " | error="
-                                    + exception;
+                    testError = "Configured WiFi reconnect failed" + " | error=" + exception;
                 }
             }
         }
 
-        final boolean finalReconnectResult =
-                reconnected;
-
-        final String finalTestError =
-                testError;
-
+        final boolean finalReconnectResult = reconnected;
+        final String finalTestError = testError;
         MicroUI.callSerially(
                 new Runnable() {
                     @Override
                     public void run() {
-                        HeaderController.this
-                                .provisioningSmokeTestRunning =
-                                false;
-
-                        HeaderController.this.mainPage
-                                .updateWifiConnectionStatus(
-                                        finalReconnectResult
-                                );
-
+                        HeaderController.this.provisioningSmokeTestRunning = false;
+                        HeaderController.this.mainPage.updateWifiConnectionStatus(finalReconnectResult);
                         if (finalTestError == null) {
                             LOGGER.log(
                                     Level.INFO,
-                                    "Provisioning HTTP smoke test"
+                                    "Provisioning smoke test"
                                             + " completed successfully"
                                             + " | WiFi reconnected="
                                             + finalReconnectResult
@@ -255,7 +209,7 @@ public class HeaderController {
                         } else {
                             LOGGER.log(
                                     Level.WARNING,
-                                    "Provisioning HTTP smoke test"
+                                    "Provisioning smoke test"
                                             + " completed with error"
                                             + " | WiFi reconnected="
                                             + finalReconnectResult
