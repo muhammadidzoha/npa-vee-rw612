@@ -14,6 +14,11 @@ import ej.ecom.wifi.WifiCapability;
 import ej.ecom.wifi.AccessPoint;
 import ej.microui.MicroUI;
 
+import ej.hoka.http.HttpRequest;
+import ej.hoka.http.HttpResponse;
+import ej.hoka.http.HttpServer;
+import ej.hoka.http.requesthandler.RequestHandler;
+
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,6 +28,8 @@ public class HeaderController {
 
     private final MainPage mainPage;
     private final WifiHardwareService wifiService;
+
+    private HttpServer provisioningHttpServer;
 
     private Timer clockTimer;
 
@@ -48,6 +55,7 @@ public class HeaderController {
 
         this.mainPage = mainPage;
         this.wifiService = new WifiHardwareService();
+        this.provisioningHttpServer = null;
         this.clockTimer = null;
 
         this.periodicTask = null;
@@ -127,6 +135,7 @@ public class HeaderController {
             AccessPoint[] accessPoints = this.wifiService.scanProvisioningNetworks();
             logProvisioningNetworks(accessPoints);
             this.wifiService.startProvisioningAccessPoint();
+            this.provisioningHttpServer = createProvisioningHttpServer();
             LOGGER.log(
                     Level.INFO,
                     "Provisioning SoftAP smoke test active"
@@ -146,6 +155,10 @@ public class HeaderController {
         } catch (Exception exception) {
             testError = "Provisioning smoke test failed" + " | error=" + exception;
         } finally {
+            if (this.provisioningHttpServer != null) {
+                LOGGER.log(Level.INFO, "Releasing unstarted HOKA server configuration");
+                this.provisioningHttpServer = null;
+            }
             try {
                 this.wifiService.stopProvisioningAccessPoint();
             } catch (Exception exception) {
@@ -221,6 +234,30 @@ public class HeaderController {
                 }
         );
     }
+
+    private HttpServer createProvisioningHttpServer() {
+        LOGGER.log(Level.INFO, "Creating HOKA provisioning server configuration");
+        HttpServer server = HttpServer.builder().port(80).simultaneousConnections(1).workerCount(1).connectionTimeout(5000).build();
+        server.get(
+                "/",
+                new RequestHandler() {
+                    @Override
+                    public void process(
+                            HttpRequest request,
+                            HttpResponse response
+                    ) {
+                        response.setData(
+                                "Smart Greenhouse HOKA server ready"
+                        );
+                    }
+                }
+        );
+
+        LOGGER.log(Level.INFO, "HOKA provisioning server configured" + " | port=80" + " | started=false");
+        return server;
+    }
+
+
 
     private static void logProvisioningNetworks(AccessPoint[] accessPoints) {
         if (accessPoints == null || accessPoints.length == 0) {
