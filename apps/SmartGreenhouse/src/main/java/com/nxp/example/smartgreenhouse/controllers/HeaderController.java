@@ -136,6 +136,9 @@ public class HeaderController {
             logProvisioningNetworks(accessPoints);
             this.wifiService.startProvisioningAccessPoint();
             this.provisioningHttpServer = createProvisioningHttpServer();
+            LOGGER.log(Level.INFO, "Starting HOKA provisioning server" + " | port=80");
+            this.provisioningHttpServer.start();
+            LOGGER.log(Level.INFO, "HOKA provisioning server started" + " | port=80");
             LOGGER.log(
                     Level.INFO,
                     "Provisioning SoftAP smoke test active"
@@ -156,8 +159,15 @@ public class HeaderController {
             testError = "Provisioning smoke test failed" + " | error=" + exception;
         } finally {
             if (this.provisioningHttpServer != null) {
-                LOGGER.log(Level.INFO, "Releasing unstarted HOKA server configuration");
-                this.provisioningHttpServer = null;
+                try {
+                    LOGGER.log(Level.INFO, "Stopping HOKA provisioning server");
+                    this.provisioningHttpServer.stop();
+                    LOGGER.log(Level.INFO, "HOKA provisioning server stopped");
+                } catch (Exception exception) {
+                    LOGGER.log(Level.SEVERE, "Failed to stop HOKA provisioning server", exception);
+                } finally {
+                    this.provisioningHttpServer = null;
+                }
             }
             try {
                 this.wifiService.stopProvisioningAccessPoint();

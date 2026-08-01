@@ -16,7 +16,7 @@
 #undef CONFIG_NO_WIFI_TCPIP_INIT
 #endif
 
-#define CONFIG_NO_WIFI_TCPIP_INIT 1
+#define CONFIG_NO_WIFI_TCPIP_INIT 0
 
 #include <inttypes.h>
 #include "wifi.h"
