@@ -1,15 +1,10 @@
 package com.nxp.example.smartgreenhouse.controllers;
 
 import com.nxp.example.smartgreenhouse.services.wifi.WifiHardwareService;
-import com.nxp.example.smartgreenhouse.utils.Time;
+import com.nxp.example.smartgreenhouse.services.time.TimeService;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
 
-import android.net.SntpClient;
-
-import ej.bon.Timer;
-import ej.bon.TimerTask;
-import ej.bon.Util;
 import ej.ecom.wifi.WifiCapability;
 import ej.ecom.wifi.AccessPoint;
 import ej.microui.MicroUI;
@@ -34,10 +29,9 @@ public class HeaderController {
 
     private final MainPage mainPage;
     private final WifiHardwareService wifiService;
+    private final TimeService timeService;
 
     private HttpServer provisioningHttpServer;
-
-    private Timer clockTimer;
 
     private Runnable periodicTask;
     private Runnable wifiConnectedTask;
@@ -49,16 +43,11 @@ public class HeaderController {
     private volatile String submittedProvisioningSsid;
     private volatile String submittedProvisioningPassword;
 
-    private static final String[] NTP_SERVERS = {"time.google.com", "0.pool.ntp.org"};
-    private static final int NTP_TIMEOUT_MS = 5000;
     private static final long NETWORK_READY_DELAY_MS = 3000L;
     private static final long PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS = 250L;
     private static final long PROVISIONING_HTTP_RESPONSE_GRACE_MS = 1500L;
     private static final long PROVISIONING_SOFT_AP_TEST_DURATION_MS = 300000L;
     private static final long PROVISIONING_CLIENT_RESTART_DELAY_MS = 1500L;
-    private long headerNtpTimeMillis;
-    private long headerNtpReferenceMillis;
-    private boolean headerTimeSynchronized;
 
     public HeaderController(MainPage mainPage) {
         if (mainPage == null) {
@@ -67,21 +56,18 @@ public class HeaderController {
 
         this.mainPage = mainPage;
         this.wifiService = new WifiHardwareService();
+        this.timeService = new TimeService();
+
         this.provisioningHttpServer = null;
         this.provisioningCredentialsSubmitted = false;
         this.submittedProvisioningSsid = null;
         this.submittedProvisioningPassword = null;
-        this.clockTimer = null;
 
         this.periodicTask = null;
         this.wifiConnectedTask = null;
 
         this.wifiConnectionRunning = false;
         this.provisioningSmokeTestRunning = false;
-
-        this.headerNtpTimeMillis = 0L;
-        this.headerNtpReferenceMillis = 0L;
-        this.headerTimeSynchronized = false;
     }
 
     public void init() {
@@ -112,19 +98,32 @@ public class HeaderController {
 
     private void startProvisioningSmokeTest() {
         if (this.provisioningSmokeTestRunning) {
-            LOGGER.log(Level.WARNING, "Provisioning smoke test ignored" + " | test is already running");
+            LOGGER.log(
+                    Level.WARNING,
+                    "Provisioning smoke test ignored"
+                            + " | test is already running"
+            );
             return;
         }
 
         if (this.wifiConnectionRunning) {
-            LOGGER.log(Level.WARNING, "Provisioning smoke test ignored" + " | automatic WiFi connection" + " is still running");
+            LOGGER.log(
+                    Level.WARNING,
+                    "Provisioning smoke test ignored"
+                            + " | automatic WiFi connection"
+                            + " is still running"
+            );
             return;
         }
 
         this.provisioningSmokeTestRunning = true;
         this.mainPage.updateWifiConnectionStatus(false);
 
-        LOGGER.log(Level.INFO, "Provisioning smoke test requested");
+        LOGGER.log(
+                Level.INFO,
+                "Provisioning smoke test requested"
+        );
+
         Thread worker =
                 new Thread(
                         new Runnable() {
@@ -132,13 +131,22 @@ public class HeaderController {
                             public void run() {
                                 HeaderController.this.runProvisioningSmokeTest();
                             }
-                        }, "wifi-provisioning-smoke-test"
+                        },
+                        "wifi-provisioning-smoke-test"
                 );
+
         try {
             worker.start();
         } catch (Error error) {
             this.provisioningSmokeTestRunning = false;
-            LOGGER.log(Level.SEVERE, "Unable to start provisioning" + " smoke test worker" + " | error=" + error);
+
+            LOGGER.log(
+                    Level.SEVERE,
+                    "Unable to start provisioning"
+                            + " smoke test worker"
+                            + " | error="
+                            + error
+            );
         }
     }
 
@@ -154,14 +162,35 @@ public class HeaderController {
         clearSubmittedProvisioningCredentials();
 
         try {
-            LOGGER.log(Level.INFO, "Provisioning smoke test started");
-            AccessPoint[] accessPoints = this.wifiService.scanProvisioningNetworks();
+            LOGGER.log(
+                    Level.INFO,
+                    "Provisioning smoke test started"
+            );
+
+            AccessPoint[] accessPoints =
+                    this.wifiService.scanProvisioningNetworks();
+
             logProvisioningNetworks(accessPoints);
+
             this.wifiService.startProvisioningAccessPoint();
-            this.provisioningHttpServer = createProvisioningHttpServer(accessPoints);
-            LOGGER.log(Level.INFO, "Starting HOKA provisioning server" + " | port=80");
+
+            this.provisioningHttpServer =
+                    createProvisioningHttpServer(accessPoints);
+
+            LOGGER.log(
+                    Level.INFO,
+                    "Starting HOKA provisioning server"
+                            + " | port=80"
+            );
+
             this.provisioningHttpServer.start();
-            LOGGER.log(Level.INFO, "HOKA provisioning server started" + " | port=80");
+
+            LOGGER.log(
+                    Level.INFO,
+                    "HOKA provisioning server started"
+                            + " | port=80"
+            );
+
             LOGGER.log(
                     Level.INFO,
                     "Provisioning portal active"
@@ -175,10 +204,18 @@ public class HeaderController {
                             + PROVISIONING_SOFT_AP_TEST_DURATION_MS
             );
 
-            credentialsSubmitted = waitForProvisioningCredentials(PROVISIONING_SOFT_AP_TEST_DURATION_MS);
+            credentialsSubmitted =
+                    waitForProvisioningCredentials(
+                            PROVISIONING_SOFT_AP_TEST_DURATION_MS
+                    );
+
             if (credentialsSubmitted) {
-                targetSsid = this.submittedProvisioningSsid;
-                targetPassword = this.submittedProvisioningPassword;
+                targetSsid =
+                        this.submittedProvisioningSsid;
+
+                targetPassword =
+                        this.submittedProvisioningPassword;
+
                 LOGGER.log(
                         Level.INFO,
                         "Provisioning submission detected"
@@ -187,24 +224,55 @@ public class HeaderController {
                                 + " | waitingForHttpResponseMs="
                                 + PROVISIONING_HTTP_RESPONSE_GRACE_MS
                 );
-                Thread.sleep(PROVISIONING_HTTP_RESPONSE_GRACE_MS);
+
+                Thread.sleep(
+                        PROVISIONING_HTTP_RESPONSE_GRACE_MS
+                );
             } else {
-                LOGGER.log(Level.WARNING, "Provisioning portal timed out" + " | timeoutMs=" + PROVISIONING_SOFT_AP_TEST_DURATION_MS);
+                LOGGER.log(
+                        Level.WARNING,
+                        "Provisioning portal timed out"
+                                + " | timeoutMs="
+                                + PROVISIONING_SOFT_AP_TEST_DURATION_MS
+                );
             }
         } catch (InterruptedException exception) {
-            testError = "Provisioning worker interrupted" + " | error=" + exception;
+            testError =
+                    "Provisioning worker interrupted"
+                            + " | error="
+                            + exception;
         } catch (Exception exception) {
-            testError = "Provisioning process failed" + " | error=" + exception;
+            testError =
+                    "Provisioning process failed"
+                            + " | error="
+                            + exception;
         } finally {
             if (this.provisioningHttpServer != null) {
                 try {
-                    LOGGER.log(Level.INFO, "Stopping HOKA provisioning server");
+                    LOGGER.log(
+                            Level.INFO,
+                            "Stopping HOKA provisioning server"
+                    );
+
                     this.provisioningHttpServer.stop();
-                    LOGGER.log(Level.INFO, "HOKA provisioning server stopped");
+
+                    LOGGER.log(
+                            Level.INFO,
+                            "HOKA provisioning server stopped"
+                    );
                 } catch (Exception exception) {
-                    LOGGER.log(Level.WARNING, "Unable to stop HOKA provisioning server" + " | error=" + exception);
+                    LOGGER.log(
+                            Level.WARNING,
+                            "Unable to stop HOKA provisioning server"
+                                    + " | error="
+                                    + exception
+                    );
+
                     if (testError == null) {
-                        testError = "Unable to stop HOKA server" + " | error=" + exception;
+                        testError =
+                                "Unable to stop HOKA server"
+                                        + " | error="
+                                        + exception;
                     }
                 } finally {
                     this.provisioningHttpServer = null;
@@ -214,21 +282,52 @@ public class HeaderController {
             try {
                 this.wifiService.stopProvisioningAccessPoint();
             } catch (Exception exception) {
-                LOGGER.log(Level.WARNING, "Unable to stop provisioning SoftAP" + " | error=" + exception);
+                LOGGER.log(
+                        Level.WARNING,
+                        "Unable to stop provisioning SoftAP"
+                                + " | error="
+                                + exception
+                );
+
                 if (testError == null) {
-                    testError = "Unable to stop SoftAP" + " | error=" + exception;
+                    testError =
+                            "Unable to stop SoftAP"
+                                    + " | error="
+                                    + exception;
                 }
             }
+
             try {
-                Thread.sleep(PROVISIONING_CLIENT_RESTART_DELAY_MS);
+                Thread.sleep(
+                        PROVISIONING_CLIENT_RESTART_DELAY_MS
+                );
             } catch (InterruptedException exception) {
-                LOGGER.log(Level.WARNING, "Provisioning client restart delay interrupted" + " | error=" + exception);
+                LOGGER.log(
+                        Level.WARNING,
+                        "Provisioning client restart delay interrupted"
+                                + " | error="
+                                + exception
+                );
             }
+
             if (credentialsSubmitted && targetSsid != null) {
                 try {
-                    LOGGER.log(Level.INFO, "Connecting to submitted WiFi" + " | SSID=" + targetSsid);
-                    selectedNetworkConnected = this.wifiService.connectToNetwork(targetSsid, targetPassword);
-                    connected = selectedNetworkConnected;
+                    LOGGER.log(
+                            Level.INFO,
+                            "Connecting to submitted WiFi"
+                                    + " | SSID="
+                                    + targetSsid
+                    );
+
+                    selectedNetworkConnected =
+                            this.wifiService.connectToNetwork(
+                                    targetSsid,
+                                    targetPassword
+                            );
+
+                    connected =
+                            selectedNetworkConnected;
+
                     LOGGER.log(
                             selectedNetworkConnected
                                     ? Level.INFO
@@ -248,6 +347,7 @@ public class HeaderController {
                                     + " | error="
                                     + exception
                     );
+
                     if (testError == null) {
                         testError =
                                 "Submitted WiFi connection failed"
@@ -258,10 +358,19 @@ public class HeaderController {
                     }
                 }
             }
+
             if (!connected) {
                 try {
-                    LOGGER.log(Level.INFO, "Reconnecting configured WiFi" + " | SSID=" + this.wifiService.getConfiguredSsid());
-                    connected = this.wifiService.connectConfiguredNetwork();
+                    LOGGER.log(
+                            Level.INFO,
+                            "Reconnecting configured WiFi"
+                                    + " | SSID="
+                                    + this.wifiService.getConfiguredSsid()
+                    );
+
+                    connected =
+                            this.wifiService.connectConfiguredNetwork();
+
                     LOGGER.log(
                             connected
                                     ? Level.INFO
@@ -274,24 +383,50 @@ public class HeaderController {
                                     + connected
                     );
                 } catch (Exception exception) {
-                    LOGGER.log(Level.WARNING, "Configured WiFi fallback failed" + " | error=" + exception);
+                    LOGGER.log(
+                            Level.WARNING,
+                            "Configured WiFi fallback failed"
+                                    + " | error="
+                                    + exception
+                    );
+
                     if (testError == null) {
-                        testError = "Configured WiFi fallback failed" + " | error=" + exception;
+                        testError =
+                                "Configured WiFi fallback failed"
+                                        + " | error="
+                                        + exception;
                     }
                 }
             }
 
             if (connected) {
                 try {
-                    Thread.sleep(NETWORK_READY_DELAY_MS);
-                    boolean timeSynchronized = synchronizeHeaderTime();
+                    Thread.sleep(
+                            NETWORK_READY_DELAY_MS
+                    );
+
+                    boolean timeSynchronized =
+                            this.timeService.synchronizeTime();
+
                     if (!timeSynchronized) {
-                        LOGGER.log(Level.WARNING, "WiFi connected but NTP synchronization failed");
+                        LOGGER.log(
+                                Level.WARNING,
+                                "WiFi connected but NTP synchronization failed"
+                        );
                     }
                 } catch (InterruptedException exception) {
-                    LOGGER.log(Level.WARNING, "Post-provisioning network delay interrupted" + " | error=" + exception);
+                    LOGGER.log(
+                            Level.WARNING,
+                            "Post-provisioning network delay interrupted"
+                                    + " | error="
+                                    + exception
+                    );
+
                     if (testError == null) {
-                        testError = "Post-provisioning delay interrupted" + " | error=" + exception;
+                        testError =
+                                "Post-provisioning delay interrupted"
+                                        + " | error="
+                                        + exception;
                     }
                 }
             }
@@ -300,19 +435,40 @@ public class HeaderController {
             targetPassword = null;
         }
 
-        final boolean finalConnectionResult = connected;
-        final boolean finalCredentialsSubmitted = credentialsSubmitted;
-        final boolean finalSelectedNetworkConnected = selectedNetworkConnected;
-        final String finalTargetSsid = targetSsid;
-        final String finalTestError = testError;
+        final boolean finalConnectionResult =
+                connected;
+
+        final boolean finalCredentialsSubmitted =
+                credentialsSubmitted;
+
+        final boolean finalSelectedNetworkConnected =
+                selectedNetworkConnected;
+
+        final String finalTargetSsid =
+                targetSsid;
+
+        final String finalTestError =
+                testError;
+
         MicroUI.callSerially(
                 new Runnable() {
                     @Override
                     public void run() {
-                        HeaderController.this.provisioningSmokeTestRunning = false;
-                        HeaderController.this.mainPage.updateWifiConnectionStatus(finalConnectionResult);
+                        HeaderController.this.provisioningSmokeTestRunning =
+                                false;
+
+                        HeaderController.this.mainPage
+                                .updateWifiConnectionStatus(
+                                        finalConnectionResult
+                                );
+
                         if (finalSelectedNetworkConnected) {
-                            LOGGER.log(Level.INFO, "WiFi provisioning completed successfully" + " | SSID=" + finalTargetSsid);
+                            LOGGER.log(
+                                    Level.INFO,
+                                    "WiFi provisioning completed successfully"
+                                            + " | SSID="
+                                            + finalTargetSsid
+                            );
                         } else if (finalCredentialsSubmitted) {
                             LOGGER.log(
                                     Level.WARNING,
@@ -339,9 +495,21 @@ public class HeaderController {
         );
     }
 
-    private HttpServer createProvisioningHttpServer(final AccessPoint[] accessPoints) {
-        final int networkCount = countProvisioningAccessPoints(accessPoints);
-        LOGGER.log(Level.INFO, "Creating HOKA provisioning server configuration" + " | networkCount=" + networkCount);
+    private HttpServer createProvisioningHttpServer(
+            final AccessPoint[] accessPoints) {
+
+        final int networkCount =
+                countProvisioningAccessPoints(
+                        accessPoints
+                );
+
+        LOGGER.log(
+                Level.INFO,
+                "Creating HOKA provisioning server configuration"
+                        + " | networkCount="
+                        + networkCount
+        );
+
         HttpServer server =
                 HttpServer.builder()
                         .port(80)
@@ -354,11 +522,34 @@ public class HeaderController {
                 "/",
                 new RequestHandler() {
                     @Override
-                    public void process(HttpRequest request, HttpResponse response) {
-                        LOGGER.log(Level.INFO, "Provisioning HTTP request received" + " | method=GET" + " | path=/");
-                        String page = buildProvisioningPage(accessPoints);
-                        setProvisioningHtmlResponse(response, page);
-                        LOGGER.log(Level.INFO, "Provisioning HTTP response prepared" + " | status=200" + " | networkCount=" + networkCount);
+                    public void process(
+                            HttpRequest request,
+                            HttpResponse response) {
+
+                        LOGGER.log(
+                                Level.INFO,
+                                "Provisioning HTTP request received"
+                                        + " | method=GET"
+                                        + " | path=/"
+                        );
+
+                        String page =
+                                buildProvisioningPage(
+                                        accessPoints
+                                );
+
+                        setProvisioningHtmlResponse(
+                                response,
+                                page
+                        );
+
+                        LOGGER.log(
+                                Level.INFO,
+                                "Provisioning HTTP response prepared"
+                                        + " | status=200"
+                                        + " | networkCount="
+                                        + networkCount
+                        );
                     }
                 }
         );
@@ -367,14 +558,38 @@ public class HeaderController {
                 "/connect",
                 new RequestHandler() {
                     @Override
-                    public void process(HttpRequest request, HttpResponse response) {
-                        LOGGER.log(Level.INFO, "Provisioning HTTP request received" + " | method=POST" + " | path=/connect");
+                    public void process(
+                            HttpRequest request,
+                            HttpResponse response) {
+
+                        LOGGER.log(
+                                Level.INFO,
+                                "Provisioning HTTP request received"
+                                        + " | method=POST"
+                                        + " | path=/connect"
+                        );
+
                         try {
-                            Map<String, String> parameters = request.parseBody(new ParameterParser());
-                            String ssid = parameters.get("ssid");
-                            String password = parameters.get("password");
-                            if (ssid == null || ssid.length() == 0) {
-                                LOGGER.log(Level.WARNING, "Provisioning form rejected" + " | reason=SSID is empty");
+                            Map<String, String> parameters =
+                                    request.parseBody(
+                                            new ParameterParser()
+                                    );
+
+                            String ssid =
+                                    parameters.get("ssid");
+
+                            String password =
+                                    parameters.get("password");
+
+                            if (ssid == null
+                                    || ssid.length() == 0) {
+
+                                LOGGER.log(
+                                        Level.WARNING,
+                                        "Provisioning form rejected"
+                                                + " | reason=SSID is empty"
+                                );
+
                                 setProvisioningHtmlResponse(
                                         response,
                                         buildProvisioningMessagePage(
@@ -383,13 +598,26 @@ public class HeaderController {
                                                 false
                                         )
                                 );
+
                                 return;
                             }
+
                             if (password == null) {
                                 password = "";
                             }
-                            if (!isProvisioningSsidAllowed(accessPoints, ssid)) {
-                                LOGGER.log(Level.WARNING, "Provisioning form rejected" + " | reason=SSID is not in scan result" + " | SSID=" + ssid);
+
+                            if (!isProvisioningSsidAllowed(
+                                    accessPoints,
+                                    ssid)) {
+
+                                LOGGER.log(
+                                        Level.WARNING,
+                                        "Provisioning form rejected"
+                                                + " | reason=SSID is not in scan result"
+                                                + " | SSID="
+                                                + ssid
+                                );
+
                                 setProvisioningHtmlResponse(
                                         response,
                                         buildProvisioningMessagePage(
@@ -399,9 +627,13 @@ public class HeaderController {
                                                 false
                                         )
                                 );
+
                                 return;
                             }
-                            if (password.length() < 8 || password.length() > 64) {
+
+                            if (password.length() < 8
+                                    || password.length() > 64) {
+
                                 LOGGER.log(
                                         Level.WARNING,
                                         "Provisioning form rejected"
@@ -411,6 +643,7 @@ public class HeaderController {
                                                 + " | passwordLength="
                                                 + password.length()
                                 );
+
                                 setProvisioningHtmlResponse(
                                         response,
                                         buildProvisioningMessagePage(
@@ -420,10 +653,18 @@ public class HeaderController {
                                                 false
                                         )
                                 );
+
                                 return;
                             }
-                            if (HeaderController.this.provisioningCredentialsSubmitted) {
-                                LOGGER.log(Level.INFO, "Provisioning connection already queued");
+
+                            if (HeaderController.this
+                                    .provisioningCredentialsSubmitted) {
+
+                                LOGGER.log(
+                                        Level.INFO,
+                                        "Provisioning connection already queued"
+                                );
+
                                 setProvisioningHtmlResponse(
                                         response,
                                         buildProvisioningMessagePage(
@@ -433,6 +674,7 @@ public class HeaderController {
                                                 true
                                         )
                                 );
+
                                 return;
                             }
 
@@ -444,6 +686,7 @@ public class HeaderController {
                                             + " | passwordLength="
                                             + password.length()
                             );
+
                             setProvisioningHtmlResponse(
                                     response,
                                     buildProvisioningMessagePage(
@@ -457,9 +700,19 @@ public class HeaderController {
                                             true
                                     )
                             );
-                            HeaderController.this.submittedProvisioningSsid = ssid;
-                            HeaderController.this.submittedProvisioningPassword = password;
-                            HeaderController.this.provisioningCredentialsSubmitted = true;
+
+                            HeaderController.this
+                                    .submittedProvisioningSsid =
+                                    ssid;
+
+                            HeaderController.this
+                                    .submittedProvisioningPassword =
+                                    password;
+
+                            HeaderController.this
+                                    .provisioningCredentialsSubmitted =
+                                    true;
+
                             LOGGER.log(
                                     Level.INFO,
                                     "Provisioning credentials queued"
@@ -469,7 +722,12 @@ public class HeaderController {
                                             + password.length()
                             );
                         } catch (IOException exception) {
-                            LOGGER.log(Level.SEVERE, "Failed to parse provisioning form", exception);
+                            LOGGER.log(
+                                    Level.SEVERE,
+                                    "Failed to parse provisioning form",
+                                    exception
+                            );
+
                             setProvisioningHtmlResponse(
                                     response,
                                     buildProvisioningMessagePage(
@@ -484,22 +742,39 @@ public class HeaderController {
                 }
         );
 
-        LOGGER.log(Level.INFO, "HOKA provisioning server configured" + " | port=80" + " | started=false" + " | routes=GET /, POST /connect");
+        LOGGER.log(
+                Level.INFO,
+                "HOKA provisioning server configured"
+                        + " | port=80"
+                        + " | started=false"
+                        + " | routes=GET /, POST /connect"
+        );
 
         return server;
     }
 
-    private String buildProvisioningPage(AccessPoint[] accessPoints) {
-        int networkCount = countProvisioningAccessPoints(accessPoints);
-        StringBuilder html = new StringBuilder(6144);
+    private String buildProvisioningPage(
+            AccessPoint[] accessPoints) {
+
+        int networkCount =
+                countProvisioningAccessPoints(
+                        accessPoints
+                );
+
+        StringBuilder html =
+                new StringBuilder(6144);
 
         html.append("<!DOCTYPE html>");
         html.append("<html lang='id'>");
         html.append("<head>");
         html.append("<meta charset='UTF-8'>");
-        html.append("<meta name='viewport' " + "content='width=device-width, initial-scale=1.0'>");
+        html.append(
+                "<meta name='viewport' "
+                        + "content='width=device-width, initial-scale=1.0'>"
+        );
         html.append("<title>Smart Greenhouse Wi-Fi</title>");
         html.append("<style>");
+
         html.append(
                 "body{"
                         + "margin:0;"
@@ -509,6 +784,7 @@ public class HeaderController {
                         + "color:#1f2933;"
                         + "}"
         );
+
         html.append(
                 ".container{"
                         + "max-width:520px;"
@@ -519,6 +795,7 @@ public class HeaderController {
                         + "box-shadow:0 4px 16px rgba(0,0,0,0.10);"
                         + "}"
         );
+
         html.append(
                 "h1{"
                         + "margin:0 0 8px 0;"
@@ -526,6 +803,7 @@ public class HeaderController {
                         + "color:#166534;"
                         + "}"
         );
+
         html.append(
                 ".description{"
                         + "margin:0 0 20px 0;"
@@ -533,6 +811,7 @@ public class HeaderController {
                         + "line-height:1.5;"
                         + "}"
         );
+
         html.append(
                 ".network{"
                         + "display:block;"
@@ -544,17 +823,20 @@ public class HeaderController {
                         + "cursor:pointer;"
                         + "}"
         );
+
         html.append(
                 ".network input{"
                         + "margin-right:10px;"
                         + "}"
         );
+
         html.append(
                 ".ssid{"
                         + "font-weight:bold;"
                         + "word-break:break-word;"
                         + "}"
         );
+
         html.append(
                 ".rssi{"
                         + "display:block;"
@@ -564,6 +846,7 @@ public class HeaderController {
                         + "color:#66788a;"
                         + "}"
         );
+
         html.append(
                 ".field-label{"
                         + "display:block;"
@@ -572,6 +855,7 @@ public class HeaderController {
                         + "font-weight:bold;"
                         + "}"
         );
+
         html.append(
                 ".password{"
                         + "width:100%;"
@@ -582,6 +866,7 @@ public class HeaderController {
                         + "font-size:16px;"
                         + "}"
         );
+
         html.append(
                 ".button{"
                         + "width:100%;"
@@ -596,6 +881,7 @@ public class HeaderController {
                         + "cursor:pointer;"
                         + "}"
         );
+
         html.append(
                 ".empty{"
                         + "padding:16px;"
@@ -604,6 +890,7 @@ public class HeaderController {
                         + "color:#92400e;"
                         + "}"
         );
+
         html.append(
                 ".note{"
                         + "margin-top:20px;"
@@ -615,13 +902,17 @@ public class HeaderController {
                         + "color:#245b2a;"
                         + "}"
         );
+
         html.append("</style>");
         html.append("</head>");
         html.append("<body>");
         html.append("<div class='container'>");
         html.append("<h1>Smart Greenhouse</h1>");
         html.append("<p class='description'>");
-        html.append("Pilih jaringan Wi-Fi dan masukkan password " + "yang akan digunakan oleh perangkat.");
+        html.append(
+                "Pilih jaringan Wi-Fi dan masukkan password "
+                        + "yang akan digunakan oleh perangkat."
+        );
         html.append("<br>");
         html.append("Jaringan ditemukan: ");
         html.append(networkCount);
@@ -629,34 +920,81 @@ public class HeaderController {
 
         if (networkCount == 0) {
             html.append("<div class='empty'>");
-            html.append("Tidak ada jaringan Wi-Fi yang ditemukan.");
+            html.append(
+                    "Tidak ada jaringan Wi-Fi yang ditemukan."
+            );
             html.append("</div>");
         } else {
-            html.append("<form method='post' action='/connect'>");
-            for (int index = 0; index < accessPoints.length; index++) {
-                AccessPoint accessPoint = accessPoints[index];
+            html.append(
+                    "<form method='post' action='/connect'>"
+            );
+
+            for (int index = 0;
+                 index < accessPoints.length;
+                 index++) {
+
+                AccessPoint accessPoint =
+                        accessPoints[index];
+
                 if (accessPoint == null) {
                     continue;
                 }
-                String ssid = escapeHtml(accessPoint.getSSID());
-                html.append("<label class='network'>");
-                html.append("<input type='radio' " + "name='ssid' " + "value='");
+
+                String ssid =
+                        escapeHtml(
+                                accessPoint.getSSID()
+                        );
+
+                html.append(
+                        "<label class='network'>"
+                );
+
+                html.append(
+                        "<input type='radio' "
+                                + "name='ssid' "
+                                + "value='"
+                );
+
                 html.append(ssid);
                 html.append("'");
+
                 if (index == 0) {
                     html.append(" checked");
                 }
+
                 html.append(">");
-                html.append("<span class='ssid'>");
+
+                html.append(
+                        "<span class='ssid'>"
+                );
+
                 html.append(ssid);
+
                 html.append("</span>");
-                html.append("<span class='rssi'>");
-                html.append("Kekuatan sinyal: ");
-                html.append(accessPoint.getRSSI());
+
+                html.append(
+                        "<span class='rssi'>"
+                );
+
+                html.append(
+                        "Kekuatan sinyal: "
+                );
+
+                html.append(
+                        accessPoint.getRSSI()
+                );
+
                 html.append("</span>");
                 html.append("</label>");
             }
-            html.append("<label class='field-label' " + "for='password'>" + "Password Wi-Fi" + "</label>");
+
+            html.append(
+                    "<label class='field-label' "
+                            + "for='password'>"
+                            + "Password Wi-Fi"
+                            + "</label>"
+            );
+
             html.append(
                     "<input class='password' "
                             + "id='password' "
@@ -667,31 +1005,66 @@ public class HeaderController {
                             + "required "
                             + "placeholder='Masukkan password Wi-Fi'>"
             );
-            html.append("<button class='button' type='submit'>" + "Hubungkan" + "</button>");
+
+            html.append(
+                    "<button class='button' type='submit'>"
+                            + "Hubungkan"
+                            + "</button>"
+            );
+
             html.append("</form>");
         }
+
         html.append("<div class='note'>");
-        html.append("Tahap pengujian: perangkat hanya menerima " + "SSID dan password. Perangkat belum " + "berpindah ke jaringan yang dipilih.");
+
+        html.append(
+                "Tahap pengujian: perangkat hanya menerima "
+                        + "SSID dan password. Perangkat belum "
+                        + "berpindah ke jaringan yang dipilih."
+        );
+
         html.append("</div>");
         html.append("</div>");
         html.append("</body>");
         html.append("</html>");
+
         return html.toString();
     }
 
-    private String buildProvisioningMessagePage(String title, String message, boolean success) {
-        String background = success ? "#e8f5e9" : "#fff4e5";
-        String textColor = success ? "#166534" : "#92400e";
-        StringBuilder html = new StringBuilder(2048);
+    private String buildProvisioningMessagePage(
+            String title,
+            String message,
+            boolean success) {
+
+        String background =
+                success
+                        ? "#e8f5e9"
+                        : "#fff4e5";
+
+        String textColor =
+                success
+                        ? "#166534"
+                        : "#92400e";
+
+        StringBuilder html =
+                new StringBuilder(2048);
+
         html.append("<!DOCTYPE html>");
         html.append("<html lang='id'>");
         html.append("<head>");
         html.append("<meta charset='UTF-8'>");
-        html.append("<meta name='viewport' " + "content='width=device-width, initial-scale=1.0'>");
+
+        html.append(
+                "<meta name='viewport' "
+                        + "content='width=device-width, initial-scale=1.0'>"
+        );
+
         html.append("<title>");
         html.append(escapeHtml(title));
         html.append("</title>");
+
         html.append("<style>");
+
         html.append(
                 "body{"
                         + "margin:0;"
@@ -701,6 +1074,7 @@ public class HeaderController {
                         + "color:#1f2933;"
                         + "}"
         );
+
         html.append(
                 ".container{"
                         + "max-width:520px;"
@@ -711,16 +1085,19 @@ public class HeaderController {
                         + "box-shadow:0 4px 16px rgba(0,0,0,0.10);"
                         + "}"
         );
+
         html.append(
                 ".message{"
                         + "padding:18px;"
                         + "border-radius:10px;"
                         + "background:"
         );
+
         html.append(background);
         html.append(";color:");
         html.append(textColor);
         html.append(";line-height:1.5;" + "}");
+
         html.append(
                 ".back{"
                         + "display:inline-block;"
@@ -733,6 +1110,7 @@ public class HeaderController {
                         + "font-weight:bold;"
                         + "}"
         );
+
         html.append("</style>");
         html.append("</head>");
         html.append("<body>");
@@ -743,31 +1121,64 @@ public class HeaderController {
         html.append("<div class='message'>");
         html.append(escapeHtml(message));
         html.append("</div>");
-        html.append("<a class='back' href='/'>" + "Kembali" + "</a>");
+
+        html.append(
+                "<a class='back' href='/'>"
+                        + "Kembali"
+                        + "</a>"
+        );
+
         html.append("</div>");
         html.append("</body>");
         html.append("</html>");
+
         return html.toString();
     }
 
-    private void setProvisioningHtmlResponse(HttpResponse response, String page) {
-        response.addHeader("content-type", "text/html; charset=UTF-8");
-        response.addHeader("cache-control", "no-store");
+    private void setProvisioningHtmlResponse(
+            HttpResponse response,
+            String page) {
+
+        response.addHeader(
+                "content-type",
+                "text/html; charset=UTF-8"
+        );
+
+        response.addHeader(
+                "cache-control",
+                "no-store"
+        );
+
         try {
-            response.setData(page, "UTF-8");
+            response.setData(
+                    page,
+                    "UTF-8"
+            );
         } catch (UnsupportedEncodingException exception) {
-            LOGGER.log(Level.WARNING, "UTF-8 encoding is unavailable" + " | using default encoding", exception);
+            LOGGER.log(
+                    Level.WARNING,
+                    "UTF-8 encoding is unavailable"
+                            + " | using default encoding",
+                    exception
+            );
+
             response.setData(page);
         }
     }
 
-    private int countProvisioningAccessPoints(AccessPoint[] accessPoints) {
+    private int countProvisioningAccessPoints(
+            AccessPoint[] accessPoints) {
+
         if (accessPoints == null) {
             return 0;
         }
 
         int count = 0;
-        for (int index = 0; index < accessPoints.length; index++) {
+
+        for (int index = 0;
+             index < accessPoints.length;
+             index++) {
+
             if (accessPoints[index] != null) {
                 count++;
             }
@@ -781,25 +1192,39 @@ public class HeaderController {
             return "";
         }
 
-        StringBuilder escaped = new StringBuilder(value.length() + 16);
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
+        StringBuilder escaped =
+                new StringBuilder(
+                        value.length() + 16
+                );
+
+        for (int index = 0;
+             index < value.length();
+             index++) {
+
+            char character =
+                    value.charAt(index);
+
             switch (character) {
                 case '&':
                     escaped.append("&amp;");
                     break;
+
                 case '<':
                     escaped.append("&lt;");
                     break;
+
                 case '>':
                     escaped.append("&gt;");
                     break;
+
                 case '"':
                     escaped.append("&quot;");
                     break;
+
                 case '\'':
                     escaped.append("&#39;");
                     break;
+
                 default:
                     escaped.append(character);
                     break;
@@ -809,18 +1234,31 @@ public class HeaderController {
         return escaped.toString();
     }
 
-    private static boolean isProvisioningSsidAllowed(AccessPoint[] accessPoints, String ssid) {
-        if (accessPoints == null || ssid == null || ssid.length() == 0) {
+    private static boolean isProvisioningSsidAllowed(
+            AccessPoint[] accessPoints,
+            String ssid) {
+
+        if (accessPoints == null
+                || ssid == null
+                || ssid.length() == 0) {
+
             return false;
         }
 
-        for (int index = 0; index < accessPoints.length; index++) {
-            AccessPoint accessPoint = accessPoints[index];
+        for (int index = 0;
+             index < accessPoints.length;
+             index++) {
+
+            AccessPoint accessPoint =
+                    accessPoints[index];
+
             if (accessPoint == null) {
                 continue;
             }
 
-            if (ssid.equals(accessPoint.getSSID())) {
+            if (ssid.equals(
+                    accessPoint.getSSID())) {
+
                 return true;
             }
         }
@@ -828,16 +1266,32 @@ public class HeaderController {
         return false;
     }
 
-    private boolean waitForProvisioningCredentials(long timeoutMilliseconds) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMilliseconds;
+    private boolean waitForProvisioningCredentials(
+            long timeoutMilliseconds)
+            throws InterruptedException {
+
+        long deadline =
+                System.currentTimeMillis()
+                        + timeoutMilliseconds;
+
         while (!this.provisioningCredentialsSubmitted) {
-            long remaining = deadline - System.currentTimeMillis();
+            long remaining =
+                    deadline
+                            - System.currentTimeMillis();
+
             if (remaining <= 0L) {
                 return false;
             }
 
-            long sleepDuration = remaining < PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS ? remaining : PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS;
-            Thread.sleep(sleepDuration);
+            long sleepDuration =
+                    remaining
+                            < PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS
+                            ? remaining
+                            : PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS;
+
+            Thread.sleep(
+                    sleepDuration
+            );
         }
 
         return true;
@@ -849,15 +1303,34 @@ public class HeaderController {
         this.submittedProvisioningPassword = null;
     }
 
-    private static void logProvisioningNetworks(AccessPoint[] accessPoints) {
-        if (accessPoints == null || accessPoints.length == 0) {
-            LOGGER.log(Level.WARNING, "No provisioning WiFi network found");
+    private static void logProvisioningNetworks(
+            AccessPoint[] accessPoints) {
+
+        if (accessPoints == null
+                || accessPoints.length == 0) {
+
+            LOGGER.log(
+                    Level.WARNING,
+                    "No provisioning WiFi network found"
+            );
+
             return;
         }
 
-        LOGGER.log(Level.INFO, "Provisioning networks selected" + " | count=" + accessPoints.length);
-        for (int index = 0; index < accessPoints.length; index++) {
-            AccessPoint accessPoint = accessPoints[index];
+        LOGGER.log(
+                Level.INFO,
+                "Provisioning networks selected"
+                        + " | count="
+                        + accessPoints.length
+        );
+
+        for (int index = 0;
+             index < accessPoints.length;
+             index++) {
+
+            AccessPoint accessPoint =
+                    accessPoints[index];
+
             LOGGER.log(
                     Level.INFO,
                     "Provisioning network"
@@ -877,7 +1350,13 @@ public class HeaderController {
         }
 
         this.wifiConnectionRunning = true;
-        LOGGER.log(Level.INFO, "Automatic WiFi connection started" + " | SSID: " + this.wifiService.getConfiguredSsid());
+
+        LOGGER.log(
+                Level.INFO,
+                "Automatic WiFi connection started"
+                        + " | SSID: "
+                        + this.wifiService.getConfiguredSsid()
+        );
 
         Thread worker =
                 new Thread(
@@ -886,43 +1365,111 @@ public class HeaderController {
                             public void run() {
                                 boolean connected;
                                 String errorMessage;
+
                                 try {
-                                    WifiCapability capability = HeaderController.this.wifiService.getCapability();
-                                    LOGGER.log(Level.INFO, "WiFi capability: " + capability);
-                                    connected = HeaderController.this.wifiService.connectConfiguredNetwork();
+                                    WifiCapability capability =
+                                            HeaderController.this
+                                                    .wifiService
+                                                    .getCapability();
+
+                                    LOGGER.log(
+                                            Level.INFO,
+                                            "WiFi capability: "
+                                                    + capability
+                                    );
+
+                                    connected =
+                                            HeaderController.this
+                                                    .wifiService
+                                                    .connectConfiguredNetwork();
+
                                     if (connected) {
-                                        LOGGER.log(Level.INFO, "WiFi connected" + " | waiting for network before NTP");
-                                        Thread.sleep(NETWORK_READY_DELAY_MS);
-                                        boolean timeSynchronized = HeaderController.this.synchronizeHeaderTime();
+                                        LOGGER.log(
+                                                Level.INFO,
+                                                "WiFi connected"
+                                                        + " | waiting for network before NTP"
+                                        );
+
+                                        Thread.sleep(
+                                                NETWORK_READY_DELAY_MS
+                                        );
+
+                                        boolean timeSynchronized =
+                                                HeaderController.this
+                                                        .timeService
+                                                        .synchronizeTime();
+
                                         if (!timeSynchronized) {
-                                            LOGGER.log(Level.WARNING, "WiFi connected but header time" + " was not synchronized.");
+                                            LOGGER.log(
+                                                    Level.WARNING,
+                                                    "WiFi connected but header time"
+                                                            + " was not synchronized."
+                                            );
                                         }
                                     }
-                                    errorMessage = connected ? null : "Configured network" + " was not joined.";
+
+                                    errorMessage =
+                                            connected
+                                                    ? null
+                                                    : "Configured network"
+                                                      + " was not joined.";
+
                                 } catch (Exception exception) {
                                     connected = false;
-                                    errorMessage = exception.toString();
+                                    errorMessage =
+                                            exception.toString();
                                 }
-                                final boolean connectionResult = connected;
-                                final String connectionError = errorMessage;
+
+                                final boolean connectionResult =
+                                        connected;
+
+                                final String connectionError =
+                                        errorMessage;
+
                                 MicroUI.callSerially(
                                         new Runnable() {
                                             @Override
                                             public void run() {
-                                                HeaderController.this.wifiConnectionRunning = false;
-                                                HeaderController.this.mainPage.updateWifiConnectionStatus(connectionResult);
+                                                HeaderController.this
+                                                        .wifiConnectionRunning =
+                                                        false;
+
+                                                HeaderController.this
+                                                        .mainPage
+                                                        .updateWifiConnectionStatus(
+                                                                connectionResult
+                                                        );
+
                                                 if (connectionResult) {
-                                                    Runnable task = HeaderController.this.wifiConnectedTask;
+                                                    Runnable task =
+                                                            HeaderController.this
+                                                                    .wifiConnectedTask;
+
                                                     if (task != null) {
                                                         try {
                                                             task.run();
                                                         } catch (RuntimeException exception) {
-                                                            LOGGER.log(Level.WARNING, "WiFi connected task failed" + " | error=" + exception);
+                                                            LOGGER.log(
+                                                                    Level.WARNING,
+                                                                    "WiFi connected task failed"
+                                                                            + " | error="
+                                                                            + exception
+                                                            );
                                                         }
                                                     }
-                                                    LOGGER.log(Level.INFO, "Automatic WiFi" + " connection successful" + " | SSID: " + HeaderController.this.wifiService.getConfiguredSsid());
+
+                                                    LOGGER.log(
+                                                            Level.INFO,
+                                                            "Automatic WiFi"
+                                                                    + " connection successful"
+                                                                    + " | SSID: "
+                                                                    + HeaderController.this
+                                                                    .wifiService
+                                                                    .getConfiguredSsid()
+                                                    );
                                                 } else {
-                                                    LOGGER.log(Level.WARNING,
+                                                    LOGGER.log(
+                                                            Level.WARNING,
                                                             "Automatic WiFi"
                                                                     + " connection failed"
                                                                     + " | SSID: "
@@ -945,105 +1492,44 @@ public class HeaderController {
     }
 
     private void startClock() {
-        if (this.clockTimer != null) {
-            return;
-        }
-
-        this.clockTimer = new Timer();
-        this.clockTimer.schedule(
-                new TimerTask() {
+        this.timeService.startClock(
+                new TimeService.ClockListener() {
                     @Override
-                    public void run() {
-                        long currentUtcMillis = HeaderController.this.getCurrentHeaderUtcMillis();
-                        final String currentTime = Time.formatJakartaTime(currentUtcMillis);
+                    public void onTimeChanged(
+                            final String currentTime) {
+
                         MicroUI.callSerially(
                                 new Runnable() {
                                     @Override
                                     public void run() {
-                                        HeaderController.this.mainPage.updateTime(currentTime);
-                                        Runnable task = HeaderController.this.periodicTask;
+                                        HeaderController.this
+                                                .mainPage
+                                                .updateTime(
+                                                        currentTime
+                                                );
+
+                                        Runnable task =
+                                                HeaderController.this
+                                                        .periodicTask;
+
                                         if (task == null) {
                                             return;
                                         }
+
                                         try {
                                             task.run();
                                         } catch (RuntimeException exception) {
-                                            LOGGER.log(Level.WARNING, "Periodic application" + " task failed: " + exception);
+                                            LOGGER.log(
+                                                    Level.WARNING,
+                                                    "Periodic application task failed: "
+                                                            + exception
+                                            );
                                         }
                                     }
                                 }
                         );
                     }
-                },
-                0,
-                1000
-        );
-    }
-
-    private synchronized void setHeaderNtpTime(long ntpTimeMillis, long ntpReferenceMillis) {
-        this.headerNtpTimeMillis = ntpTimeMillis;
-        this.headerNtpReferenceMillis = ntpReferenceMillis;
-        this.headerTimeSynchronized = true;
-    }
-
-    private synchronized long getCurrentHeaderUtcMillis() {
-        if (!this.headerTimeSynchronized) {
-            return 0L;
-        }
-
-        long elapsedMillis = Util.platformTimeMillis() - this.headerNtpReferenceMillis;
-        if (elapsedMillis < 0L) {
-            elapsedMillis =
-                    0L;
-        }
-
-        return this.headerNtpTimeMillis + elapsedMillis;
-    }
-
-    private boolean synchronizeHeaderTime() {
-        for (int index = 0; index < NTP_SERVERS.length; index++) {
-            String server = NTP_SERVERS[index];
-            LOGGER.log(Level.INFO, "Synchronizing header time" + " | server=" + server);
-            try {
-                SntpClient client = new SntpClient();
-                boolean successful = client.requestTime(server, NTP_TIMEOUT_MS);
-                if (!successful) {
-                    LOGGER.log(Level.WARNING, "NTP request failed" + " | server=" + server);
-                    continue;
                 }
-                setHeaderNtpTime(client.getNtpTime(), client.getNtpTimeReference());
-                long currentUtcMillis = getCurrentHeaderUtcMillis();
-
-                Util.setCurrentTimeMillis(currentUtcMillis);
-                LOGGER.log(
-                        Level.INFO,
-                        "Header time synchronized"
-                                + " | server="
-                                + server
-                                + " | utcMillis="
-                                + currentUtcMillis
-                                + " | jakartaTime="
-                                + Time.formatJakartaTime(
-                                currentUtcMillis
-                        )
-                                + " | roundTripMs="
-                                + client.getRoundTripTime()
-                );
-
-                return true;
-            } catch (RuntimeException exception) {
-                LOGGER.log(
-                        Level.WARNING,
-                        "NTP synchronization error"
-                                + " | server="
-                                + server
-                                + " | error="
-                                + exception
-                );
-            }
-        }
-
-        LOGGER.log(Level.WARNING, "Header time synchronization failed.");
-        return false;
+        );
     }
 }
