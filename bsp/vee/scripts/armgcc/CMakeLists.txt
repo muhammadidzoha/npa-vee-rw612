@@ -71,6 +71,10 @@ add_executable(${MCUX_SDK_PROJECT_NAME}
     "${MicroEjRootDirPath}/src/bsp/lora/lora.h"
     "${MicroEjRootDirPath}/src/bsp/lora/lora_native.c"
 
+    "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_storage.c"
+    "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_storage.h"
+    "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_native.c"
+
     "${MicroEjRootDirPath}/src/bsp/FreeRTOSConfig.h"
     "${MicroEjRootDirPath}/src/bsp/lwipopts.h"
     "${MicroEjRootDirPath}/src/bsp/pin_mux.c"
@@ -107,6 +111,7 @@ target_include_directories(${MCUX_SDK_PROJECT_NAME} PRIVATE
     ${MicroEjRootDirPath}/src/bsp
 
     ${MicroEjRootDirPath}/src/bsp/lora
+    ${MicroEjRootDirPath}/src/bsp/wifi
 
     ${MicroEjRootDirPath}/
     ${MICROEJ_DEST}/inc

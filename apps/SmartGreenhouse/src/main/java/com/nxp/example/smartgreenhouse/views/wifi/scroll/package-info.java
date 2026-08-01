@@ -1,1 +1,0 @@
-package com.nxp.example.smartgreenhouse.views.wifi.scroll;
