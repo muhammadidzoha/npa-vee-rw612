@@ -136,7 +136,12 @@ public final class WifiProvisioningModal extends Container {
 
     @Override
     protected void computeContentOptimalSize(Size size) {
-        size.setSize(Display.getDisplay().getWidth(), Display.getDisplay().getHeight());
+        int displayWidth = Display.getDisplay().getWidth();
+        int displayHeight = Display.getDisplay().getHeight();
+
+        computeChildOptimalSize(this.backButton, BACK_ICON_SIZE, BACK_ICON_SIZE);
+
+        size.setSize(displayWidth, displayHeight);
     }
 
     @Override
