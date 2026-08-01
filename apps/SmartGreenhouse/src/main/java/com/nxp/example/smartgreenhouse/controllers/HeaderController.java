@@ -1,9 +1,11 @@
 package com.nxp.example.smartgreenhouse.controllers;
 
+import com.nxp.example.smartgreenhouse.models.wifi.WifiProvisioningState;
 import com.nxp.example.smartgreenhouse.services.time.TimeService;
 import com.nxp.example.smartgreenhouse.services.wifi.WifiProvisioningService;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
+import com.nxp.example.smartgreenhouse.views.wifi.WifiProvisioningModal;
 
 import ej.microui.MicroUI;
 
@@ -38,20 +40,16 @@ public class HeaderController {
                     public void onStateChanged(int state) {
                         LOGGER.log(Level.INFO, "WiFi provisioning state changed | state=" + state);
                     }
-
                     @Override
                     public void onWifiConnectionStatusChanged(final boolean connected) {
                         HeaderController.this.updateWifiConnectionStatus(connected);
                     }
-
                     @Override
                     public void onProvisioningReady(final String ssid, final String password, final String portalUrl, final int networkCount) {
                         LOGGER.log(Level.INFO, "WiFi provisioning ready | SSID=" + ssid + " | portal=" + portalUrl + " | networkCount=" + networkCount);
-
                         if (!HeaderController.this.wifiProvisioningUiActive) {
                             return;
                         }
-
                         MicroUI.callSerially(
                                 new Runnable() {
                                     @Override
@@ -61,15 +59,12 @@ public class HeaderController {
                                 }
                         );
                     }
-
                     @Override
                     public void onConnecting(final String ssid) {
                         LOGGER.log(Level.INFO, "WiFi connecting | SSID=" + ssid);
-
                         if (!HeaderController.this.wifiProvisioningUiActive) {
                             return;
                         }
-
                         MicroUI.callSerially(
                                 new Runnable() {
                                     @Override
@@ -79,14 +74,11 @@ public class HeaderController {
                                 }
                         );
                     }
-
                     @Override
                     public void onConnected(String ssid) {
                         LOGGER.log(Level.INFO, "WiFi connected | SSID=" + ssid);
-
                         if (HeaderController.this.wifiProvisioningUiActive) {
                             HeaderController.this.wifiProvisioningUiActive = false;
-
                             MicroUI.callSerially(
                                     new Runnable() {
                                         @Override
@@ -96,20 +88,14 @@ public class HeaderController {
                                     }
                             );
                         }
-
                         HeaderController.this.runWifiConnectedTask();
                     }
-
                     @Override
                     public void onFailed(String message) {
                         LOGGER.log(Level.WARNING, "WiFi process failed | message=" + message);
-
                         if (!HeaderController.this.wifiProvisioningUiActive) {
                             return;
                         }
-
-                        HeaderController.this.wifiProvisioningUiActive = false;
-
                         MicroUI.callSerially(
                                 new Runnable() {
                                     @Override
@@ -121,7 +107,6 @@ public class HeaderController {
                     }
                 }
         );
-
         this.periodicTask = null;
         this.wifiConnectedTask = null;
         this.wifiProvisioningStartedTask = null;
@@ -131,6 +116,7 @@ public class HeaderController {
     public void init() {
         this.mainPage.updateWifiConnectionStatus(false);
         registerWifiClickListener();
+        registerWifiProvisioningBackListener();
         startClock();
         this.wifiProvisioningService.tryAutoConnect();
     }
@@ -162,6 +148,17 @@ public class HeaderController {
         );
     }
 
+    private void registerWifiProvisioningBackListener() {
+        this.mainPage.setOnWifiProvisioningBackListener(
+                new WifiProvisioningModal.OnBackListener() {
+                    @Override
+                    public void onBack() {
+                        HeaderController.this.cancelProvisioningFromUser();
+                    }
+                }
+        );
+    }
+
     private void startProvisioningFromUser() {
         if (this.wifiProvisioningService.isBusy()) {
             LOGGER.log(Level.WARNING, "WiFi provisioning request ignored | service is busy");
@@ -173,7 +170,7 @@ public class HeaderController {
 
         if (!runWifiProvisioningStartedTask()) {
             this.wifiProvisioningUiActive = false;
-            this.mainPage.showWifiProvisioningFailed();
+            this.mainPage.closeWifiProvisioningModal();
             LOGGER.log(Level.WARNING, "WiFi provisioning cancelled | preparation task failed");
             return;
         }
@@ -182,9 +179,32 @@ public class HeaderController {
 
         if (!started) {
             this.wifiProvisioningUiActive = false;
-            this.mainPage.showWifiProvisioningFailed();
+            this.mainPage.closeWifiProvisioningModal();
             LOGGER.log(Level.WARNING, "WiFi provisioning could not be started");
         }
+    }
+
+    private void cancelProvisioningFromUser() {
+        if (!this.wifiProvisioningUiActive) {
+            return;
+        }
+
+        if (this.wifiProvisioningService.getState() == WifiProvisioningState.CONNECTING) {
+            LOGGER.log(Level.WARNING, "WiFi provisioning Back ignored | connection is already in progress");
+            return;
+        }
+
+        boolean accepted = this.wifiProvisioningService.cancelProvisioning();
+
+        if (!accepted) {
+            LOGGER.log(Level.WARNING, "WiFi provisioning Back could not be processed");
+            return;
+        }
+
+        LOGGER.log(Level.INFO, "WiFi provisioning Back accepted");
+
+        this.wifiProvisioningUiActive = false;
+        this.mainPage.closeWifiProvisioningModal();
     }
 
     private boolean runWifiProvisioningStartedTask() {

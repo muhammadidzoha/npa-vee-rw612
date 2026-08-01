@@ -35,6 +35,7 @@ public class MainPage extends Container {
 
     private boolean menuOpen;
     private boolean wifiOpen;
+    private boolean wifiAuthenticationOpen;
     private boolean sensorDetailOpen;
     private boolean actuatorDetailOpen;
     private boolean wifiProvisioningModalOpen;
@@ -44,6 +45,7 @@ public class MainPage extends Container {
 
         this.menuOpen = false;
         this.wifiOpen = false;
+        this.wifiAuthenticationOpen = false;
         this.sensorDetailOpen = false;
         this.actuatorDetailOpen = false;
         this.wifiProvisioningModalOpen = false;
@@ -63,14 +65,6 @@ public class MainPage extends Container {
 
         this.wifiProvisioningModal = new WifiProvisioningModal();
         this.wifiProvisioningModal.setEnabled(false);
-        this.wifiProvisioningModal.setOnCloseListener(
-                new WifiProvisioningModal.OnCloseListener() {
-                    @Override
-                    public void onClose() {
-                        MainPage.this.closeWifiProvisioningModal();
-                    }
-                }
-        );
 
         addChild(this.overview);
         addChild(this.headerOverview);
@@ -85,6 +79,10 @@ public class MainPage extends Container {
 
     public void setOnWifiClick(HeaderOverview.onWifiClickListener onWifiClick) {
         this.headerOverview.setOnWifiClickListener(onWifiClick);
+    }
+
+    public void setOnWifiProvisioningBackListener(WifiProvisioningModal.OnBackListener listener) {
+        this.wifiProvisioningModal.setOnBackListener(listener);
     }
 
     public void setOnOverviewSwipeListener(HorizontalSwipeListener horizontalSwipeListener) {

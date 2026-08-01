@@ -39,7 +39,7 @@ public final class WifiProvisioningService {
 
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: WIFI PROVISIONING SERVICE]");
 
-    private static final String PROVISIONING_PORTAL_URL = "http://192.168.4.1/";
+    private static final String PROVISIONING_PORTAL_URL = "http://192.168.1.1/";
     private static final long PROVISIONING_TIMEOUT_MS = 300000L;
     private static final long PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS = 250L;
     private static final long PROVISIONING_HTTP_RESPONSE_GRACE_MS = 1500L;
@@ -53,10 +53,15 @@ public final class WifiProvisioningService {
     private volatile int state;
     private volatile boolean autoConnectRunning;
     private volatile boolean provisioningRunning;
+    private volatile boolean restoreRunning;
     private volatile boolean provisioningCredentialsSubmitted;
+    private volatile boolean provisioningCancelRequested;
 
     private volatile String submittedProvisioningSsid;
     private volatile String submittedProvisioningPassword;
+
+    private WifiCredentials connectedCredentials;
+    private WifiCredentials previousConnectedCredentials;
 
     private HttpServer provisioningHttpServer;
 
@@ -85,10 +90,15 @@ public final class WifiProvisioningService {
         this.state = WifiProvisioningState.IDLE;
         this.autoConnectRunning = false;
         this.provisioningRunning = false;
+        this.restoreRunning = false;
         this.provisioningCredentialsSubmitted = false;
+        this.provisioningCancelRequested = false;
 
         this.submittedProvisioningSsid = null;
         this.submittedProvisioningPassword = null;
+
+        this.connectedCredentials = null;
+        this.previousConnectedCredentials = null;
 
         this.provisioningHttpServer = null;
     }
@@ -98,7 +108,7 @@ public final class WifiProvisioningService {
     }
 
     public boolean isBusy() {
-        return this.autoConnectRunning || this.provisioningRunning;
+        return this.autoConnectRunning || this.provisioningRunning || this.restoreRunning;
     }
 
     public boolean isProvisioningRunning() {
@@ -115,7 +125,7 @@ public final class WifiProvisioningService {
 
     public boolean tryAutoConnect() {
         synchronized (this.stateLock) {
-            if (this.autoConnectRunning || this.provisioningRunning) {
+            if (this.autoConnectRunning || this.provisioningRunning || this.restoreRunning) {
                 LOGGER.log(Level.WARNING, "Automatic WiFi connection ignored | service is busy");
                 return false;
             }
@@ -141,6 +151,7 @@ public final class WifiProvisioningService {
         } catch (Error error) {
             synchronized (this.stateLock) {
                 this.autoConnectRunning = false;
+                this.connectedCredentials = null;
             }
 
             setState(WifiProvisioningState.IDLE);
@@ -155,12 +166,16 @@ public final class WifiProvisioningService {
 
     public boolean startProvisioning() {
         synchronized (this.stateLock) {
-            if (this.provisioningRunning || this.autoConnectRunning) {
+            if (this.provisioningRunning || this.autoConnectRunning || this.restoreRunning) {
                 LOGGER.log(Level.WARNING, "WiFi provisioning ignored | service is busy");
                 return false;
             }
 
             this.provisioningRunning = true;
+            this.provisioningCancelRequested = false;
+
+            this.previousConnectedCredentials = this.connectedCredentials;
+            this.connectedCredentials = null;
         }
 
         clearSubmittedProvisioningCredentials();
@@ -182,17 +197,61 @@ public final class WifiProvisioningService {
             worker.start();
             return true;
         } catch (Error error) {
+            WifiCredentials previousCredentials;
+
             synchronized (this.stateLock) {
                 this.provisioningRunning = false;
+                this.provisioningCancelRequested = false;
+
+                previousCredentials = this.previousConnectedCredentials;
+                this.connectedCredentials = previousCredentials;
+                this.previousConnectedCredentials = null;
             }
 
-            setState(WifiProvisioningState.FAILED);
-            notifyFailed("Tidak dapat menjalankan proses provisioning Wi-Fi.");
+            if (previousCredentials != null) {
+                setState(WifiProvisioningState.CONNECTED);
+                notifyConnectionStatus(true);
+                notifyConnected(previousCredentials.getSsid());
+            } else {
+                setState(WifiProvisioningState.IDLE);
+                notifyConnectionStatus(false);
+                notifyFailed("Tidak dapat menjalankan proses provisioning Wi-Fi.");
+            }
 
             LOGGER.log(Level.SEVERE, "Unable to start WiFi provisioning worker | error=" + error);
 
             return false;
         }
+    }
+
+    public boolean cancelProvisioning() {
+        boolean restoreAfterFailure = false;
+
+        synchronized (this.stateLock) {
+            if (this.state == WifiProvisioningState.CONNECTING || this.provisioningCredentialsSubmitted) {
+                LOGGER.log(Level.WARNING, "WiFi provisioning cancellation ignored | connection is already in progress");
+                return false;
+            }
+
+            if (this.provisioningRunning) {
+                this.provisioningCancelRequested = true;
+                LOGGER.log(Level.INFO, "WiFi provisioning cancellation requested");
+                return true;
+            }
+
+            if (this.state == WifiProvisioningState.FAILED && !this.autoConnectRunning && !this.restoreRunning) {
+                this.restoreRunning = true;
+                restoreAfterFailure = true;
+            } else {
+                return false;
+            }
+        }
+
+        if (restoreAfterFailure) {
+            return startPreviousConnectionRestoreWorker();
+        }
+
+        return false;
     }
 
     private void runAutoConnect() {
@@ -226,6 +285,7 @@ public final class WifiProvisioningService {
 
         synchronized (this.stateLock) {
             this.autoConnectRunning = false;
+            this.connectedCredentials = connected ? credentials : null;
         }
 
         if (connected && credentials != null) {
@@ -247,6 +307,7 @@ public final class WifiProvisioningService {
     private void finishAutoConnectWithoutCredential() {
         synchronized (this.stateLock) {
             this.autoConnectRunning = false;
+            this.connectedCredentials = null;
         }
 
         setState(WifiProvisioningState.IDLE);
@@ -267,47 +328,56 @@ public final class WifiProvisioningService {
 
             LOGGER.log(Level.INFO, "Provisioning WiFi scan completed | networkCount=" + countAccessPoints(accessPoints));
 
-            this.wifiHardwareService.startProvisioningAccessPoint();
+            if (!this.provisioningCancelRequested) {
+                this.wifiHardwareService.startProvisioningAccessPoint();
+            }
 
-            this.provisioningHttpServer = createProvisioningHttpServer(accessPoints);
+            if (!this.provisioningCancelRequested) {
+                this.provisioningHttpServer = createProvisioningHttpServer(accessPoints);
 
-            LOGGER.log(Level.INFO, "Starting HOKA provisioning server | port=80");
+                LOGGER.log(Level.INFO, "Starting HOKA provisioning server | port=80");
 
-            this.provisioningHttpServer.start();
+                this.provisioningHttpServer.start();
 
-            LOGGER.log(Level.INFO, "HOKA provisioning server started | port=80");
+                LOGGER.log(Level.INFO, "HOKA provisioning server started | port=80");
 
-            setState(WifiProvisioningState.HOTSPOT_READY);
+                setState(WifiProvisioningState.HOTSPOT_READY);
 
-            notifyProvisioningReady(
-                    this.wifiHardwareService.getProvisioningSsid(),
-                    this.wifiHardwareService.getProvisioningPassword(),
-                    PROVISIONING_PORTAL_URL,
-                    countAccessPoints(accessPoints)
-            );
-
-            LOGGER.log(
-                    Level.INFO,
-                    "Provisioning portal ready | SSID=" + this.wifiHardwareService.getProvisioningSsid()
-                            + " | portal=" + PROVISIONING_PORTAL_URL
-                            + " | networkCount=" + countAccessPoints(accessPoints)
-            );
-
-            credentialsSubmitted = waitForProvisioningCredentials(PROVISIONING_TIMEOUT_MS);
-
-            if (!credentialsSubmitted) {
-                failureMessage = "Waktu provisioning Wi-Fi telah habis.";
-            } else {
-                targetSsid = this.submittedProvisioningSsid;
-                targetPassword = this.submittedProvisioningPassword;
+                notifyProvisioningReady(
+                        this.wifiHardwareService.getProvisioningSsid(),
+                        this.wifiHardwareService.getProvisioningPassword(),
+                        PROVISIONING_PORTAL_URL,
+                        countAccessPoints(accessPoints)
+                );
 
                 LOGGER.log(
                         Level.INFO,
-                        "Provisioning credentials submitted | SSID=" + targetSsid
-                                + " | waitingForHttpResponseMs=" + PROVISIONING_HTTP_RESPONSE_GRACE_MS
+                        "Provisioning portal ready | SSID=" + this.wifiHardwareService.getProvisioningSsid()
+                                + " | portal=" + PROVISIONING_PORTAL_URL
+                                + " | networkCount=" + countAccessPoints(accessPoints)
                 );
 
-                Thread.sleep(PROVISIONING_HTTP_RESPONSE_GRACE_MS);
+                credentialsSubmitted = waitForProvisioningCredentials(PROVISIONING_TIMEOUT_MS);
+            }
+
+            if (!this.provisioningCancelRequested) {
+                if (!credentialsSubmitted) {
+                    failureMessage = "Waktu provisioning Wi-Fi telah habis.";
+                } else {
+                    targetSsid = this.submittedProvisioningSsid;
+                    targetPassword = this.submittedProvisioningPassword;
+
+                    setState(WifiProvisioningState.CONNECTING);
+                    notifyConnecting(targetSsid);
+
+                    LOGGER.log(
+                            Level.INFO,
+                            "Provisioning credentials submitted | SSID=" + targetSsid
+                                    + " | waitingForHttpResponseMs=" + PROVISIONING_HTTP_RESPONSE_GRACE_MS
+                    );
+
+                    Thread.sleep(PROVISIONING_HTTP_RESPONSE_GRACE_MS);
+                }
             }
         } catch (InterruptedException exception) {
             failureMessage = "Proses provisioning Wi-Fi terhenti.";
@@ -325,6 +395,11 @@ public final class WifiProvisioningService {
             }
         }
 
+        if (this.provisioningCancelRequested) {
+            finishProvisioningCancellation();
+            return;
+        }
+
         if (!credentialsSubmitted || targetSsid == null || targetSsid.length() == 0) {
             finishProvisioningFailure(failureMessage == null ? "Provisioning Wi-Fi tidak selesai." : failureMessage);
             clearSubmittedProvisioningCredentials();
@@ -336,9 +411,6 @@ public final class WifiProvisioningService {
         } catch (InterruptedException exception) {
             LOGGER.log(Level.WARNING, "Provisioning client restart delay interrupted | error=" + exception);
         }
-
-        setState(WifiProvisioningState.CONNECTING);
-        notifyConnecting(targetSsid);
 
         boolean connected = false;
 
@@ -355,10 +427,12 @@ public final class WifiProvisioningService {
             LOGGER.log(Level.WARNING, "Provisioned WiFi connection failed | SSID=" + targetSsid + " | error=" + exception);
         }
 
+        WifiCredentials persistedCredentials = null;
+
         if (connected) {
             try {
-                WifiCredentials credentials = new WifiCredentials(targetSsid, targetPassword);
-                this.credentialStore.save(credentials);
+                persistedCredentials = new WifiCredentials(targetSsid, targetPassword);
+                this.credentialStore.save(persistedCredentials);
 
                 LOGGER.log(Level.INFO, "Provisioned WiFi credentials persisted | SSID=" + targetSsid);
             } catch (RuntimeException exception) {
@@ -377,6 +451,14 @@ public final class WifiProvisioningService {
 
         synchronized (this.stateLock) {
             this.provisioningRunning = false;
+            this.provisioningCancelRequested = false;
+
+            if (connected && persistedCredentials != null) {
+                this.connectedCredentials = persistedCredentials;
+                this.previousConnectedCredentials = null;
+            } else {
+                this.connectedCredentials = null;
+            }
         }
 
         clearSubmittedProvisioningCredentials();
@@ -393,6 +475,99 @@ public final class WifiProvisioningService {
             notifyFailed(failureMessage == null ? "Koneksi Wi-Fi gagal." : failureMessage);
 
             LOGGER.log(Level.WARNING, "WiFi provisioning failed | SSID=" + targetSsid + " | reason=" + failureMessage);
+        }
+    }
+
+    private void finishProvisioningCancellation() {
+        synchronized (this.stateLock) {
+            this.provisioningRunning = false;
+            this.provisioningCancelRequested = false;
+            this.restoreRunning = true;
+        }
+
+        clearSubmittedProvisioningCredentials();
+
+        LOGGER.log(Level.INFO, "WiFi provisioning cancelled by user");
+
+        restorePreviousConnectionAfterBack();
+    }
+
+    private boolean startPreviousConnectionRestoreWorker() {
+        Thread worker = new Thread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        WifiProvisioningService.this.restorePreviousConnectionAfterBack();
+                    }
+                },
+                "wifi-restore-previous"
+        );
+
+        try {
+            worker.start();
+            return true;
+        } catch (Error error) {
+            synchronized (this.stateLock) {
+                this.restoreRunning = false;
+            }
+
+            LOGGER.log(Level.SEVERE, "Unable to start previous WiFi restore worker | error=" + error);
+
+            return false;
+        }
+    }
+
+    private void restorePreviousConnectionAfterBack() {
+        WifiCredentials previousCredentials;
+
+        synchronized (this.stateLock) {
+            previousCredentials = this.previousConnectedCredentials;
+            this.previousConnectedCredentials = null;
+        }
+
+        if (previousCredentials == null) {
+            synchronized (this.stateLock) {
+                this.restoreRunning = false;
+                this.connectedCredentials = null;
+            }
+
+            setState(WifiProvisioningState.IDLE);
+            notifyConnectionStatus(false);
+
+            LOGGER.log(Level.INFO, "WiFi provisioning Back completed | no previous connected network");
+
+            return;
+        }
+
+        setState(WifiProvisioningState.AUTO_CONNECTING);
+
+        boolean restored = false;
+
+        try {
+            LOGGER.log(Level.INFO, "Restoring previous WiFi | SSID=" + previousCredentials.getSsid());
+
+            restored = this.wifiHardwareService.connectToNetwork(previousCredentials.getSsid(), previousCredentials.getPassword());
+        } catch (Exception exception) {
+            LOGGER.log(Level.WARNING, "Unable to restore previous WiFi | SSID=" + previousCredentials.getSsid() + " | error=" + exception);
+        }
+
+        synchronized (this.stateLock) {
+            this.restoreRunning = false;
+            this.connectedCredentials = restored ? previousCredentials : null;
+        }
+
+        if (restored) {
+            setState(WifiProvisioningState.CONNECTED);
+            notifyConnectionStatus(true);
+            notifyConnected(previousCredentials.getSsid());
+
+            LOGGER.log(Level.INFO, "Previous WiFi restored | SSID=" + previousCredentials.getSsid());
+        } else {
+            setState(WifiProvisioningState.FAILED);
+            notifyConnectionStatus(false);
+            notifyFailed("Tidak dapat terhubung kembali ke Wi-Fi sebelumnya.");
+
+            LOGGER.log(Level.WARNING, "Previous WiFi restore failed | SSID=" + previousCredentials.getSsid());
         }
     }
 
@@ -473,6 +648,14 @@ public final class WifiProvisioningService {
                     @Override
                     public void process(HttpRequest request, HttpResponse response) {
                         try {
+                            if (WifiProvisioningService.this.provisioningCancelRequested) {
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        WifiPortalView.buildErrorPage("Provisioning dibatalkan", "Silakan mulai kembali dari perangkat.")
+                                );
+                                return;
+                            }
+
                             Map<String, String> parameters = request.parseBody(new ParameterParser());
 
                             String ssid = parameters.get("ssid");
@@ -517,11 +700,7 @@ public final class WifiProvisioningService {
                             WifiProvisioningService.this.submittedProvisioningPassword = password;
                             WifiProvisioningService.this.provisioningCredentialsSubmitted = true;
 
-                            LOGGER.log(
-                                    Level.INFO,
-                                    "Provisioning credentials queued | SSID=" + ssid
-                                            + " | passwordLength=" + password.length()
-                            );
+                            LOGGER.log(Level.INFO, "Provisioning credentials queued | SSID=" + ssid + " | passwordLength=" + password.length());
                         } catch (IOException exception) {
                             LOGGER.log(Level.WARNING, "Unable to process provisioning credentials | error=" + exception);
 
@@ -540,21 +719,19 @@ public final class WifiProvisioningService {
     private boolean waitForProvisioningCredentials(long timeoutMilliseconds) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMilliseconds;
 
-        while (!this.provisioningCredentialsSubmitted) {
+        while (!this.provisioningCredentialsSubmitted && !this.provisioningCancelRequested) {
             long remaining = deadline - System.currentTimeMillis();
 
             if (remaining <= 0L) {
                 return false;
             }
 
-            long sleepDuration = remaining < PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS
-                    ? remaining
-                    : PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS;
+            long sleepDuration = remaining < PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS ? remaining : PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS;
 
             Thread.sleep(sleepDuration);
         }
 
-        return true;
+        return this.provisioningCredentialsSubmitted && !this.provisioningCancelRequested;
     }
 
     private void stopProvisioningHttpServer() {
@@ -578,6 +755,8 @@ public final class WifiProvisioningService {
     private void finishProvisioningFailure(String message) {
         synchronized (this.stateLock) {
             this.provisioningRunning = false;
+            this.provisioningCancelRequested = false;
+            this.connectedCredentials = null;
         }
 
         setState(WifiProvisioningState.FAILED);
