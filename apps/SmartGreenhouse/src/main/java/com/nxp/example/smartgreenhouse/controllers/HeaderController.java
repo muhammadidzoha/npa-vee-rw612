@@ -18,11 +18,15 @@ import ej.hoka.http.HttpRequest;
 import ej.hoka.http.HttpResponse;
 import ej.hoka.http.HttpServer;
 import ej.hoka.http.requesthandler.RequestHandler;
+import ej.hoka.http.body.ParameterParser;
+
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.Map;
 
-import java.io.UnsupportedEncodingException;
 
 public class HeaderController {
 
@@ -265,26 +269,52 @@ public class HeaderController {
                     public void process(HttpRequest request, HttpResponse response) {
                         LOGGER.log(Level.INFO, "Provisioning HTTP request received" + " | method=GET" + " | path=/");
                         String page = buildProvisioningPage(accessPoints);
-                        response.addHeader("content-type", "text/html; charset=UTF-8");
-                        response.addHeader("cache-control", "no-store");
-                        try {
-                            response.setData(page, "UTF-8");
-                        } catch (UnsupportedEncodingException exception) {
-                            LOGGER.log(Level.WARNING, "UTF-8 encoding is unavailable" + " | using default encoding", exception);
-                            response.setData(page);
-                        }
+                        setProvisioningHtmlResponse(response, page);
                         LOGGER.log(Level.INFO, "Provisioning HTTP response prepared" + " | status=200" + " | networkCount=" + networkCount);
                     }
                 }
         );
 
-        LOGGER.log(Level.INFO, "HOKA provisioning server configured" + " | port=80" + " | started=false");
+        server.post(
+                "/connect",
+                new RequestHandler() {
+                    @Override
+                    public void process(HttpRequest request, HttpResponse response) {
+                        LOGGER.log(Level.INFO, "Provisioning HTTP request received" + " | method=POST" + " | path=/connect");
+                        try {
+                            Map<String, String> parameters = request.parseBody(new ParameterParser());
+                            String ssid = parameters.get("ssid");
+                            String password = parameters.get("password");
+                            if (ssid == null || ssid.length() == 0) {
+                                LOGGER.log(Level.WARNING, "Provisioning form rejected" + " | reason=SSID is empty");
+                                setProvisioningHtmlResponse(response, buildProvisioningMessagePage("Data belum lengkap", "Pilih salah satu jaringan Wi-Fi.", false));
+                                return;
+                            }
+
+                            if (password == null) {
+                                password = "";
+                            }
+
+                            LOGGER.log(Level.INFO, "Provisioning credentials received" + " | SSID=" + ssid + " | passwordLength=" + password.length());
+                            setProvisioningHtmlResponse(response, buildProvisioningMessagePage("Data berhasil diterima", "SSID " + ssid + " dan password sudah diterima oleh perangkat. " + "Pada tahap ini perangkat belum berpindah jaringan.", true));
+                            LOGGER.log(Level.INFO, "Provisioning credentials response prepared" + " | SSID=" + ssid + " | status=200");
+                        } catch (IOException exception) {
+                            LOGGER.log(Level.SEVERE, "Failed to parse provisioning form", exception);
+                            setProvisioningHtmlResponse(response, buildProvisioningMessagePage("Terjadi kesalahan", "Perangkat tidak dapat membaca data formulir.", false));
+                        }
+                    }
+                }
+        );
+
+        LOGGER.log(Level.INFO, "HOKA provisioning server configured" + " | port=80" + " | started=false" + " | routes=GET /, POST /connect");
+
         return server;
     }
 
     private String buildProvisioningPage(AccessPoint[] accessPoints) {
         int networkCount = countProvisioningAccessPoints(accessPoints);
-        StringBuilder html = new StringBuilder(4096);
+        StringBuilder html = new StringBuilder(6144);
+
         html.append("<!DOCTYPE html>");
         html.append("<html lang='id'>");
         html.append("<head>");
@@ -308,8 +338,7 @@ public class HeaderController {
                         + "background:#ffffff;"
                         + "padding:24px;"
                         + "border-radius:16px;"
-                        + "box-shadow:0 4px 16px "
-                        + "rgba(0,0,0,0.10);"
+                        + "box-shadow:0 4px 16px rgba(0,0,0,0.10);"
                         + "}"
         );
         html.append(
@@ -334,10 +363,20 @@ public class HeaderController {
                         + "border:1px solid #d9e2dc;"
                         + "border-radius:10px;"
                         + "background:#f9fbfa;"
+                        + "cursor:pointer;"
                         + "}"
         );
-        html.append(".network input{" + "margin-right:10px;" + "}");
-        html.append(".ssid{" + "font-weight:bold;" + "word-break:break-word;" + "}");
+        html.append(
+                ".network input{"
+                        + "margin-right:10px;"
+                        + "}"
+        );
+        html.append(
+                ".ssid{"
+                        + "font-weight:bold;"
+                        + "word-break:break-word;"
+                        + "}"
+        );
         html.append(
                 ".rssi{"
                         + "display:block;"
@@ -345,6 +384,38 @@ public class HeaderController {
                         + "margin-top:5px;"
                         + "font-size:13px;"
                         + "color:#66788a;"
+                        + "}"
+        );
+        html.append(
+                ".field-label{"
+                        + "display:block;"
+                        + "margin-top:20px;"
+                        + "margin-bottom:8px;"
+                        + "font-weight:bold;"
+                        + "}"
+        );
+        html.append(
+                ".password{"
+                        + "width:100%;"
+                        + "box-sizing:border-box;"
+                        + "padding:13px;"
+                        + "border:1px solid #b8c4bc;"
+                        + "border-radius:9px;"
+                        + "font-size:16px;"
+                        + "}"
+        );
+        html.append(
+                ".button{"
+                        + "width:100%;"
+                        + "margin-top:20px;"
+                        + "padding:14px;"
+                        + "border:0;"
+                        + "border-radius:10px;"
+                        + "background:#166534;"
+                        + "color:#ffffff;"
+                        + "font-size:16px;"
+                        + "font-weight:bold;"
+                        + "cursor:pointer;"
                         + "}"
         );
         html.append(
@@ -372,7 +443,7 @@ public class HeaderController {
         html.append("<div class='container'>");
         html.append("<h1>Smart Greenhouse</h1>");
         html.append("<p class='description'>");
-        html.append("Pilih jaringan Wi-Fi yang akan " + "digunakan oleh perangkat.");
+        html.append("Pilih jaringan Wi-Fi dan masukkan password " + "yang akan digunakan oleh perangkat.");
         html.append("<br>");
         html.append("Jaringan ditemukan: ");
         html.append(networkCount);
@@ -380,9 +451,10 @@ public class HeaderController {
 
         if (networkCount == 0) {
             html.append("<div class='empty'>");
-            html.append("Tidak ada jaringan Wi-Fi " + "yang ditemukan.");
+            html.append("Tidak ada jaringan Wi-Fi yang ditemukan.");
             html.append("</div>");
         } else {
+            html.append("<form method='post' action='/connect'>");
             for (int index = 0; index < accessPoints.length; index++) {
                 AccessPoint accessPoint = accessPoints[index];
                 if (accessPoint == null) {
@@ -392,7 +464,11 @@ public class HeaderController {
                 html.append("<label class='network'>");
                 html.append("<input type='radio' " + "name='ssid' " + "value='");
                 html.append(ssid);
-                html.append("'>");
+                html.append("'");
+                if (index == 0) {
+                    html.append(" checked");
+                }
+                html.append(">");
                 html.append("<span class='ssid'>");
                 html.append(ssid);
                 html.append("</span>");
@@ -402,22 +478,108 @@ public class HeaderController {
                 html.append("</span>");
                 html.append("</label>");
             }
+            html.append("<label class='field-label' " + "for='password'>" + "Password Wi-Fi" + "</label>");
+            html.append(
+                    "<input class='password' "
+                            + "id='password' "
+                            + "name='password' "
+                            + "type='password' "
+                            + "maxlength='63' "
+                            + "autocomplete='new-password' "
+                            + "placeholder='Masukkan password Wi-Fi'>"
+            );
+            html.append("<button class='button' type='submit'>" + "Hubungkan" + "</button>");
+            html.append("</form>");
         }
-
         html.append("<div class='note'>");
-        html.append(
-                "Pada tahap ini halaman baru menampilkan "
-                        + "daftar jaringan hasil scan. "
-                        + "Password dan tombol koneksi akan "
-                        + "ditambahkan pada tahap berikutnya."
-        );
-
+        html.append("Tahap pengujian: perangkat hanya menerima " + "SSID dan password. Perangkat belum " + "berpindah ke jaringan yang dipilih.");
         html.append("</div>");
         html.append("</div>");
         html.append("</body>");
         html.append("</html>");
-
         return html.toString();
+    }
+
+    private String buildProvisioningMessagePage(String title, String message, boolean success) {
+        String background = success ? "#e8f5e9" : "#fff4e5";
+        String textColor = success ? "#166534" : "#92400e";
+        StringBuilder html = new StringBuilder(2048);
+        html.append("<!DOCTYPE html>");
+        html.append("<html lang='id'>");
+        html.append("<head>");
+        html.append("<meta charset='UTF-8'>");
+        html.append("<meta name='viewport' " + "content='width=device-width, initial-scale=1.0'>");
+        html.append("<title>");
+        html.append(escapeHtml(title));
+        html.append("</title>");
+        html.append("<style>");
+        html.append(
+                "body{"
+                        + "margin:0;"
+                        + "padding:20px;"
+                        + "font-family:Arial,sans-serif;"
+                        + "background:#f3f6f4;"
+                        + "color:#1f2933;"
+                        + "}"
+        );
+        html.append(
+                ".container{"
+                        + "max-width:520px;"
+                        + "margin:0 auto;"
+                        + "background:#ffffff;"
+                        + "padding:24px;"
+                        + "border-radius:16px;"
+                        + "box-shadow:0 4px 16px rgba(0,0,0,0.10);"
+                        + "}"
+        );
+        html.append(
+                ".message{"
+                        + "padding:18px;"
+                        + "border-radius:10px;"
+                        + "background:"
+        );
+        html.append(background);
+        html.append(";color:");
+        html.append(textColor);
+        html.append(";line-height:1.5;" + "}");
+        html.append(
+                ".back{"
+                        + "display:inline-block;"
+                        + "margin-top:20px;"
+                        + "padding:12px 18px;"
+                        + "border-radius:9px;"
+                        + "background:#166534;"
+                        + "color:#ffffff;"
+                        + "text-decoration:none;"
+                        + "font-weight:bold;"
+                        + "}"
+        );
+        html.append("</style>");
+        html.append("</head>");
+        html.append("<body>");
+        html.append("<div class='container'>");
+        html.append("<h1>");
+        html.append(escapeHtml(title));
+        html.append("</h1>");
+        html.append("<div class='message'>");
+        html.append(escapeHtml(message));
+        html.append("</div>");
+        html.append("<a class='back' href='/'>" + "Kembali" + "</a>");
+        html.append("</div>");
+        html.append("</body>");
+        html.append("</html>");
+        return html.toString();
+    }
+
+    private void setProvisioningHtmlResponse(HttpResponse response, String page) {
+        response.addHeader("content-type", "text/html; charset=UTF-8");
+        response.addHeader("cache-control", "no-store");
+        try {
+            response.setData(page, "UTF-8");
+        } catch (UnsupportedEncodingException exception) {
+            LOGGER.log(Level.WARNING, "UTF-8 encoding is unavailable" + " | using default encoding", exception);
+            response.setData(page);
+        }
     }
 
     private int countProvisioningAccessPoints(AccessPoint[] accessPoints) {
