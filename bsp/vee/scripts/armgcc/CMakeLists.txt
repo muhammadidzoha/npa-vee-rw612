@@ -62,6 +62,7 @@ configure_file(
     @ONLY
 )
 
+set(MFlashRootDirPath "${MicroEjRootDirPath}/../mcux-sdk/core/components/flash/mflash")
 
 add_executable(${MCUX_SDK_PROJECT_NAME}
     "${MicroEjRootDirPath}/src/main/npavee.c"
@@ -74,6 +75,9 @@ add_executable(${MCUX_SDK_PROJECT_NAME}
     "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_storage.c"
     "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_storage.h"
     "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_native.c"
+
+    "${MFlashRootDirPath}/mflash_file.c"
+    "${MFlashRootDirPath}/frdmrw612/mflash_drv.c"
 
     "${MicroEjRootDirPath}/src/bsp/FreeRTOSConfig.h"
     "${MicroEjRootDirPath}/src/bsp/lwipopts.h"
@@ -112,6 +116,8 @@ target_include_directories(${MCUX_SDK_PROJECT_NAME} PRIVATE
 
     ${MicroEjRootDirPath}/src/bsp/lora
     ${MicroEjRootDirPath}/src/bsp/wifi
+    ${MFlashRootDirPath}
+    ${MFlashRootDirPath}/frdmrw612
 
     ${MicroEjRootDirPath}/
     ${MICROEJ_DEST}/inc
