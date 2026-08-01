@@ -42,7 +42,7 @@ public class HeaderController {
     private static final String[] NTP_SERVERS = {"time.google.com", "0.pool.ntp.org"};
     private static final int NTP_TIMEOUT_MS = 5000;
     private static final long NETWORK_READY_DELAY_MS = 3000L;
-    private static final long PROVISIONING_SOFT_AP_TEST_DURATION_MS = 60000L;
+    private static final long PROVISIONING_SOFT_AP_TEST_DURATION_MS = 300000L;
     private static final long PROVISIONING_CLIENT_RESTART_DELAY_MS = 1500L;
     private long headerNtpTimeMillis;
     private long headerNtpReferenceMillis;
@@ -252,13 +252,10 @@ public class HeaderController {
                 "/",
                 new RequestHandler() {
                     @Override
-                    public void process(
-                            HttpRequest request,
-                            HttpResponse response
-                    ) {
-                        response.setData(
-                                "Smart Greenhouse HOKA server ready"
-                        );
+                    public void process(HttpRequest request, HttpResponse response) {
+                        LOGGER.log(Level.INFO, "Provisioning HTTP request received" + " | method=GET" + " | path=/");
+                        response.setData("Smart Greenhouse HOKA server ready");
+                        LOGGER.log(Level.INFO, "Provisioning HTTP response prepared" + " | status=200");
                     }
                 }
         );
