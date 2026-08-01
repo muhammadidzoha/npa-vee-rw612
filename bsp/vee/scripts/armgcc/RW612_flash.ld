@@ -47,6 +47,8 @@ MEMORY
   m_txq32               (RW) : ORIGIN = 0x443C1508, LENGTH = 0x00001080
 }
 
+PROVIDE(__MFLASH_FS_START = ORIGIN(m_text) + LENGTH(m_text));
+
 /* Define output sections */
 SECTIONS
 {
