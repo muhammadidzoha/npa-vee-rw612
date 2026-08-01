@@ -148,7 +148,6 @@ public final class WifiHardwareService {
                 LOGGER.log(Level.INFO, "Already connected to requested WiFi" + " | SSID: " + ssid);
                 return true;
             }
-
             this.wifiManager.leave();
         }
 
