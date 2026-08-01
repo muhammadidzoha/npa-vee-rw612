@@ -22,6 +22,8 @@ public class HeaderController {
     private Runnable wifiConnectedTask;
     private Runnable wifiProvisioningStartedTask;
 
+    private volatile boolean wifiProvisioningUiActive;
+
     public HeaderController(MainPage mainPage) {
         if (mainPage == null) {
             throw new NullPointerException("mainPage tidak boleh null.");
@@ -43,24 +45,79 @@ public class HeaderController {
                     }
 
                     @Override
-                    public void onProvisioningReady(String ssid, String password, String portalUrl, int networkCount) {
+                    public void onProvisioningReady(final String ssid, final String password, final String portalUrl, final int networkCount) {
                         LOGGER.log(Level.INFO, "WiFi provisioning ready | SSID=" + ssid + " | portal=" + portalUrl + " | networkCount=" + networkCount);
+
+                        if (!HeaderController.this.wifiProvisioningUiActive) {
+                            return;
+                        }
+
+                        MicroUI.callSerially(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        HeaderController.this.mainPage.showWifiProvisioningReady(ssid, password, portalUrl, networkCount);
+                                    }
+                                }
+                        );
                     }
 
                     @Override
-                    public void onConnecting(String ssid) {
+                    public void onConnecting(final String ssid) {
                         LOGGER.log(Level.INFO, "WiFi connecting | SSID=" + ssid);
+
+                        if (!HeaderController.this.wifiProvisioningUiActive) {
+                            return;
+                        }
+
+                        MicroUI.callSerially(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        HeaderController.this.mainPage.showWifiConnecting(ssid);
+                                    }
+                                }
+                        );
                     }
 
                     @Override
                     public void onConnected(String ssid) {
                         LOGGER.log(Level.INFO, "WiFi connected | SSID=" + ssid);
+
+                        if (HeaderController.this.wifiProvisioningUiActive) {
+                            HeaderController.this.wifiProvisioningUiActive = false;
+
+                            MicroUI.callSerially(
+                                    new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            HeaderController.this.mainPage.closeWifiProvisioningModal();
+                                        }
+                                    }
+                            );
+                        }
+
                         HeaderController.this.runWifiConnectedTask();
                     }
 
                     @Override
                     public void onFailed(String message) {
                         LOGGER.log(Level.WARNING, "WiFi process failed | message=" + message);
+
+                        if (!HeaderController.this.wifiProvisioningUiActive) {
+                            return;
+                        }
+
+                        HeaderController.this.wifiProvisioningUiActive = false;
+
+                        MicroUI.callSerially(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        HeaderController.this.mainPage.showWifiProvisioningFailed();
+                                    }
+                                }
+                        );
                     }
                 }
         );
@@ -68,6 +125,7 @@ public class HeaderController {
         this.periodicTask = null;
         this.wifiConnectedTask = null;
         this.wifiProvisioningStartedTask = null;
+        this.wifiProvisioningUiActive = false;
     }
 
     public void init() {
@@ -110,7 +168,12 @@ public class HeaderController {
             return;
         }
 
+        this.wifiProvisioningUiActive = true;
+        this.mainPage.showWifiProvisioningStarting();
+
         if (!runWifiProvisioningStartedTask()) {
+            this.wifiProvisioningUiActive = false;
+            this.mainPage.showWifiProvisioningFailed();
             LOGGER.log(Level.WARNING, "WiFi provisioning cancelled | preparation task failed");
             return;
         }
@@ -118,6 +181,8 @@ public class HeaderController {
         boolean started = this.wifiProvisioningService.startProvisioning();
 
         if (!started) {
+            this.wifiProvisioningUiActive = false;
+            this.mainPage.showWifiProvisioningFailed();
             LOGGER.log(Level.WARNING, "WiFi provisioning could not be started");
         }
     }
