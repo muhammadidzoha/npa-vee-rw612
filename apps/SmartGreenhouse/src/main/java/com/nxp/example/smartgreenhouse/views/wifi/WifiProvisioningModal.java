@@ -2,22 +2,23 @@ package com.nxp.example.smartgreenhouse.views.wifi;
 
 import com.nxp.example.smartgreenhouse.style.ApplicationColors;
 import com.nxp.example.smartgreenhouse.style.Fonts;
+import com.nxp.example.smartgreenhouse.style.Icons;
 import com.nxp.example.smartgreenhouse.style.Images;
 
+import ej.microui.display.Display;
 import ej.microui.display.Font;
 import ej.microui.display.GraphicsContext;
 import ej.microui.display.Image;
 import ej.microui.display.Painter;
-import ej.microui.event.Event;
-import ej.microui.event.generator.Buttons;
-import ej.microui.event.generator.Pointer;
-import ej.mwt.Widget;
+import ej.mwt.Container;
 import ej.mwt.util.Size;
+import ej.widget.basic.ImageButton;
+import ej.widget.basic.OnClickListener;
 
-public final class WifiProvisioningModal extends Widget {
+public final class WifiProvisioningModal extends Container {
 
-    public interface OnCloseListener {
-        void onClose();
+    public interface OnBackListener {
+        void onBack();
     }
 
     private static final int MODE_STARTING = 0;
@@ -25,36 +26,76 @@ public final class WifiProvisioningModal extends Widget {
     private static final int MODE_CONNECTING = 2;
     private static final int MODE_FAILED = 3;
 
+    private static final int BACK_ICON_SIZE = 24;
+    private static final int PADDING_LEFT_ICON = 15;
+    private static final int PADDING_TOP_ICON = 3;
+
+    private static final int PADDING_TOP_HEADER = 26;
+    private static final int PADDING_TOP_TITLE = 8;
+    private static final int TITLE_OFFSET_Y = 1;
+
+    private final Image headerFrame;
     private final Image qrCode;
+    private final ImageButton backButton;
+
+    private final Font titleFont;
+    private final Font textFont;
 
     private int mode;
+
     private String provisioningSsid;
     private String provisioningPassword;
     private String portalUrl;
     private String connectingSsid;
+
     private int networkCount;
 
-    private OnCloseListener closeListener;
+    private OnBackListener backListener;
 
     public WifiProvisioningModal() {
+        this.headerFrame = Image.getImage(Images.HEADER_DETAIL_FRAME);
         this.qrCode = Image.getImage(Images.QR);
+
+        this.titleFont = Fonts.jetbrainsMonoBold12px();
+        this.textFont = Fonts.jetbrainsMonoBold10px();
+
         this.mode = MODE_STARTING;
+
         this.provisioningSsid = "smartgreenhouse";
         this.provisioningPassword = "smartgreenhouse";
-        this.portalUrl = "http://192.168.4.1/";
+        this.portalUrl = "http://192.168.1.1/";
         this.connectingSsid = "";
+
         this.networkCount = 0;
-        this.closeListener = null;
+        this.backListener = null;
+
+        this.backButton = new ImageButton(Icons.BACK_ICON_24);
+        this.backButton.setOnClickListener(
+                new OnClickListener() {
+                    @Override
+                    public void onClick() {
+                        if (WifiProvisioningModal.this.backListener != null && WifiProvisioningModal.this.shouldShowBackButton()) {
+                            WifiProvisioningModal.this.backListener.onBack();
+                        }
+                    }
+                }
+        );
+
+        addChild(this.backButton);
+        updateBackButtonState();
+
         setEnabled(false);
     }
 
-    public void setOnCloseListener(OnCloseListener listener) {
-        this.closeListener = listener;
+    public void setOnBackListener(OnBackListener listener) {
+        this.backListener = listener;
     }
 
     public void showStarting() {
         this.mode = MODE_STARTING;
         this.connectingSsid = "";
+        updateBackButtonState();
+        requestLayOut();
         requestRender();
     }
 
@@ -64,23 +105,38 @@ public final class WifiProvisioningModal extends Widget {
         this.provisioningPassword = password == null ? "smartgreenhouse" : password;
         this.portalUrl = portalUrl == null ? "http://192.168.4.1/" : portalUrl;
         this.networkCount = networkCount;
+        updateBackButtonState();
+        requestLayOut();
         requestRender();
     }
 
     public void showConnecting(String ssid) {
         this.mode = MODE_CONNECTING;
         this.connectingSsid = ssid == null ? "" : ssid;
+        updateBackButtonState();
+        requestLayOut();
         requestRender();
     }
 
     public void showFailed() {
         this.mode = MODE_FAILED;
+        updateBackButtonState();
+        requestLayOut();
         requestRender();
     }
 
     @Override
+    protected void layOutChildren(int contentWidth, int contentHeight) {
+        if (shouldShowBackButton()) {
+            layOutChild(this.backButton, PADDING_LEFT_ICON, PADDING_TOP_ICON, BACK_ICON_SIZE, BACK_ICON_SIZE);
+        } else {
+            layOutChild(this.backButton, -BACK_ICON_SIZE, -BACK_ICON_SIZE, BACK_ICON_SIZE, BACK_ICON_SIZE);
+        }
+    }
+
+    @Override
     protected void computeContentOptimalSize(Size size) {
-        size.setSize(480, 272);
+        size.setSize(Display.getDisplay().getWidth(), Display.getDisplay().getHeight());
     }
 
     @Override
@@ -88,103 +144,100 @@ public final class WifiProvisioningModal extends Widget {
         g.setColor(ApplicationColors.BACKGROUND);
         Painter.fillRectangle(g, 0, 0, contentWidth, contentHeight);
 
-        Font titleFont = Fonts.jetbrainsMonoBold12px();
-        Font textFont = Fonts.jetbrainsMonoBold10px();
+        Painter.drawImage(g, this.headerFrame, 0, PADDING_TOP_HEADER);
 
-        drawCenteredText(g, "Wi-Fi", titleFont, contentWidth, 18, ApplicationColors.PRIMARY_COLOR);
+        drawHeaderTitle(g, contentWidth);
 
         if (this.mode == MODE_STARTING) {
-            renderStarting(g, contentWidth, textFont);
-            return;
+            renderStarting(g, contentWidth);
+        } else if (this.mode == MODE_READY) {
+            renderReady(g, contentWidth);
+        } else if (this.mode == MODE_CONNECTING) {
+            renderConnecting(g, contentWidth);
+        } else {
+            renderFailed(g, contentWidth);
         }
 
-        if (this.mode == MODE_READY) {
-            renderReady(g, contentWidth, textFont);
-            return;
-        }
-
-        if (this.mode == MODE_CONNECTING) {
-            renderConnecting(g, contentWidth, textFont);
-            return;
-        }
-
-        renderFailed(g, contentWidth, textFont);
+        super.renderContent(g, contentWidth, contentHeight);
     }
 
-    private void renderStarting(GraphicsContext g, int contentWidth, Font textFont) {
-        drawCenteredText(g, "Menyiapkan pengaturan Wi-Fi...", textFont, contentWidth, 118, ApplicationColors.SECONDARY_COLOR);
-        drawCenteredText(g, "Memindai jaringan yang tersedia.", textFont, contentWidth, 140, ApplicationColors.SECONDARY_COLOR);
+    private void drawHeaderTitle(GraphicsContext g, int contentWidth) {
+        String title = "Wi-Fi";
+        int titleWidth = this.titleFont.stringWidth(title);
+        int titleX = (contentWidth - titleWidth) / 2;
+        int titleY = PADDING_TOP_TITLE - TITLE_OFFSET_Y;
+
+        g.setColor(ApplicationColors.PRIMARY_COLOR);
+        Painter.drawString(g, title, this.titleFont, titleX, titleY);
     }
 
-    private void renderReady(GraphicsContext g, int contentWidth, Font textFont) {
+    private void renderStarting(GraphicsContext g, int contentWidth) {
+        drawCenteredText(g, "Menyiapkan pengaturan Wi-Fi...", contentWidth, 112, ApplicationColors.SECONDARY_COLOR);
+        drawCenteredText(g, "Memindai jaringan yang tersedia.", contentWidth, 136, ApplicationColors.SECONDARY_COLOR);
+    }
+
+    private void renderReady(GraphicsContext g, int contentWidth) {
         int qrX = 28;
-        int qrY = 62;
+        int qrY = 64;
 
         Painter.drawImage(g, this.qrCode, qrX, qrY);
 
         int textX = 178;
-        int currentY = 52;
+        int currentY = 54;
         int lineGap = 18;
 
         g.setColor(ApplicationColors.SECONDARY_COLOR);
-        Painter.drawString(g, "1. Scan QR atau hubungkan manual:", textFont, textX, currentY);
+
+        Painter.drawString(g, "1. Scan QR atau hubungkan manual:", this.textFont, textX, currentY);
 
         currentY += lineGap;
-        Painter.drawString(g, "SSID:", textFont, textX, currentY);
+        Painter.drawString(g, "SSID:", this.textFont, textX, currentY);
 
         currentY += lineGap;
-        Painter.drawString(g, this.provisioningSsid, textFont, textX, currentY);
+        Painter.drawString(g, this.provisioningSsid, this.textFont, textX, currentY);
 
         currentY += lineGap;
-        Painter.drawString(g, "Password:", textFont, textX, currentY);
+        Painter.drawString(g, "Password:", this.textFont, textX, currentY);
 
         currentY += lineGap;
-        Painter.drawString(g, this.provisioningPassword, textFont, textX, currentY);
+        Painter.drawString(g, this.provisioningPassword, this.textFont, textX, currentY);
 
         currentY += lineGap + 4;
-        Painter.drawString(g, "2. Buka:", textFont, textX, currentY);
+        Painter.drawString(g, "2. Buka:", this.textFont, textX, currentY);
 
         currentY += lineGap;
-        Painter.drawString(g, this.portalUrl, textFont, textX, currentY);
+        Painter.drawString(g, this.portalUrl, this.textFont, textX, currentY);
 
         currentY += lineGap + 4;
-        Painter.drawString(g, "Jaringan ditemukan: " + this.networkCount, textFont, textX, currentY);
+        Painter.drawString(g, "Jaringan ditemukan: " + this.networkCount, this.textFont, textX, currentY);
 
-        drawCenteredText(g, "Gunakan HP untuk melanjutkan pengaturan Wi-Fi.", textFont, contentWidth, 232, ApplicationColors.SECONDARY_COLOR);
+        drawCenteredText(g, "Gunakan HP untuk melanjutkan pengaturan Wi-Fi.", contentWidth, 238, ApplicationColors.SECONDARY_COLOR);
     }
 
-    private void renderConnecting(GraphicsContext g, int contentWidth, Font textFont) {
-        drawCenteredText(g, this.connectingSsid, textFont, contentWidth, 110, ApplicationColors.PRIMARY_COLOR);
-        drawCenteredText(g, "Connecting...", textFont, contentWidth, 138, ApplicationColors.SECONDARY_COLOR);
-        drawCenteredText(g, "Mohon tunggu.", textFont, contentWidth, 164, ApplicationColors.SECONDARY_COLOR);
+    private void renderConnecting(GraphicsContext g, int contentWidth) {
+        drawCenteredText(g, this.connectingSsid, contentWidth, 110, ApplicationColors.PRIMARY_COLOR);
+        drawCenteredText(g, "Connecting...", contentWidth, 138, ApplicationColors.SECONDARY_COLOR);
+        drawCenteredText(g, "Mohon tunggu.", contentWidth, 164, ApplicationColors.SECONDARY_COLOR);
     }
 
-    private void renderFailed(GraphicsContext g, int contentWidth, Font textFont) {
-        drawCenteredText(g, "Provisioning Wi-Fi gagal.", textFont, contentWidth, 110, ApplicationColors.THIRD_COLOR);
-        drawCenteredText(g, "Silakan coba kembali.", textFont, contentWidth, 138, ApplicationColors.SECONDARY_COLOR);
-        drawCenteredText(g, "Sentuh layar untuk menutup.", textFont, contentWidth, 182, ApplicationColors.SECONDARY_COLOR);
+    private void renderFailed(GraphicsContext g, int contentWidth) {
+        drawCenteredText(g, "Koneksi Wi-Fi gagal.", contentWidth, 110, ApplicationColors.THIRD_COLOR);
+        drawCenteredText(g, "Tekan Back untuk kembali.", contentWidth, 140, ApplicationColors.SECONDARY_COLOR);
     }
 
-    private void drawCenteredText(GraphicsContext g, String text, Font font, int contentWidth, int y, int color) {
-        int textWidth = font.stringWidth(text);
+    private void drawCenteredText(GraphicsContext g, String text, int contentWidth, int y, int color) {
+        int textWidth = this.textFont.stringWidth(text);
         int x = (contentWidth - textWidth) / 2;
 
         g.setColor(color);
-        Painter.drawString(g, text, font, x, y);
+        Painter.drawString(g, text, this.textFont, x, y);
     }
 
-    @Override
-    public boolean handleEvent(int event) {
-        if (Event.getType(event) != Pointer.EVENT_TYPE) {
-            return true;
-        }
+    private boolean shouldShowBackButton() {
+        return this.mode != MODE_CONNECTING;
+    }
 
-        if (this.mode == MODE_FAILED && Buttons.isReleased(event)) {
-            if (this.closeListener != null) {
-                this.closeListener.onClose();
-            }
-        }
-
-        return true;
+    private void updateBackButtonState() {
+        this.backButton.setEnabled(shouldShowBackButton());
     }
 }
