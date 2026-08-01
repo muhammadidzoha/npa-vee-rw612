@@ -60,4 +60,6 @@ public class Images {
     public static final String TOGGLE_FRAME = "/asset/image/ToggleFrame.png";
 
     public static final String TOGGLE_INDICATOR = "/asset/image/ToggleIndicator.png";
+
+    public static final String QR = "/asset/image/QR.png";
 }

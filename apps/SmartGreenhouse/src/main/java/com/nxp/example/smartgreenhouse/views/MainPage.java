@@ -13,6 +13,8 @@ import com.nxp.example.smartgreenhouse.views.menu.MenuContainer;
 import com.nxp.example.smartgreenhouse.views.overview.FooterOverview;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
 import com.nxp.example.smartgreenhouse.views.overview.Overview;
+import com.nxp.example.smartgreenhouse.views.wifi.WifiProvisioningModal;
+
 import ej.annotation.NonNullByDefault;
 import ej.microui.display.Display;
 import ej.mwt.Container;
@@ -26,24 +28,25 @@ public class MainPage extends Container {
     private final MenuContainer menuContainer;
     private final SensorDetail sensorDetail;
     private final ActuatorDetail actuatorDetail;
+    private final WifiProvisioningModal wifiProvisioningModal;
 
     private final TrayLabel trayLabel;
     private final Indicator indicator;
 
     private boolean menuOpen;
     private boolean wifiOpen;
-    private boolean wifiAuthenticationOpen;
     private boolean sensorDetailOpen;
     private boolean actuatorDetailOpen;
-
+    private boolean wifiProvisioningModalOpen;
 
     public MainPage() {
         setEnabled(true);
 
         this.menuOpen = false;
         this.wifiOpen = false;
-        this.wifiAuthenticationOpen = false;
         this.sensorDetailOpen = false;
+        this.actuatorDetailOpen = false;
+        this.wifiProvisioningModalOpen = false;
 
         this.headerOverview = new HeaderOverview();
         this.trayLabel = new TrayLabel();
@@ -57,17 +60,27 @@ public class MainPage extends Container {
 
         this.actuatorDetail = new ActuatorDetail();
         this.actuatorDetail.setEnabled(false);
-        this.actuatorDetailOpen = false;
 
-        addChild(overview);
-        addChild(headerOverview);
-        addChild(trayLabel);
-        addChild(indicator);
-        addChild(footerOverview);
-        addChild(menuContainer);
+        this.wifiProvisioningModal = new WifiProvisioningModal();
+        this.wifiProvisioningModal.setEnabled(false);
+        this.wifiProvisioningModal.setOnCloseListener(
+                new WifiProvisioningModal.OnCloseListener() {
+                    @Override
+                    public void onClose() {
+                        MainPage.this.closeWifiProvisioningModal();
+                    }
+                }
+        );
 
-        addChild(sensorDetail);
-        addChild(actuatorDetail);
+        addChild(this.overview);
+        addChild(this.headerOverview);
+        addChild(this.trayLabel);
+        addChild(this.indicator);
+        addChild(this.footerOverview);
+        addChild(this.menuContainer);
+        addChild(this.sensorDetail);
+        addChild(this.actuatorDetail);
+        addChild(this.wifiProvisioningModal);
     }
 
     public void setOnWifiClick(HeaderOverview.onWifiClickListener onWifiClick) {
@@ -171,10 +184,6 @@ public class MainPage extends Container {
         this.sensorDetail.clearSensorItem();
     }
 
-    public boolean isWifiOpen() {
-        return this.wifiOpen;
-    }
-
     public boolean isSensorDetailOpen() {
         return this.sensorDetailOpen;
     }
@@ -190,23 +199,47 @@ public class MainPage extends Container {
         requestLayOut();
     }
 
-    public void openWifi() {
-        this.menuOpen = false;
-        this.wifiOpen = true;
-        requestLayOut();
-    }
-
-    public void closeWifi() {
-        this.wifiOpen = false;
-        requestLayOut();
-    }
-
-    public boolean isWifiAuthenticationOpen() {
-        return this.wifiAuthenticationOpen;
-    }
-
     public boolean isActuatorDetailOpen() {
         return this.actuatorDetailOpen;
+    }
+
+    public void showWifiProvisioningStarting() {
+        this.wifiProvisioningModalOpen = true;
+        this.wifiProvisioningModal.showStarting();
+        this.wifiProvisioningModal.setEnabled(true);
+        requestLayOut();
+        requestRender();
+    }
+
+    public void showWifiProvisioningReady(String ssid, String password, String portalUrl, int networkCount) {
+        this.wifiProvisioningModalOpen = true;
+        this.wifiProvisioningModal.showReady(ssid, password, portalUrl, networkCount);
+        this.wifiProvisioningModal.setEnabled(true);
+        requestLayOut();
+        requestRender();
+    }
+
+    public void showWifiConnecting(String ssid) {
+        this.wifiProvisioningModalOpen = true;
+        this.wifiProvisioningModal.showConnecting(ssid);
+        this.wifiProvisioningModal.setEnabled(true);
+        requestLayOut();
+        requestRender();
+    }
+
+    public void showWifiProvisioningFailed() {
+        this.wifiProvisioningModalOpen = true;
+        this.wifiProvisioningModal.showFailed();
+        this.wifiProvisioningModal.setEnabled(true);
+        requestLayOut();
+        requestRender();
+    }
+
+    public void closeWifiProvisioningModal() {
+        this.wifiProvisioningModalOpen = false;
+        this.wifiProvisioningModal.setEnabled(false);
+        requestLayOut();
+        requestRender();
     }
 
     public void openSensorDetail() {
@@ -289,6 +322,7 @@ public class MainPage extends Container {
         int trayLabelHeight = this.trayLabel.getTrayLabelHeight();
         int gapHeaderToTray = 2;
         int trayY = headerHeight + gapHeaderToTray;
+
         layOutChild(this.trayLabel, 0, trayY, contentWidth, trayLabelHeight);
 
         int overviewWidth = 465;
@@ -302,8 +336,8 @@ public class MainPage extends Container {
         int indicatorHeight = this.indicator.getIndicatorHeight();
         int gapIndicatorToFooter = 12;
         int indicatorY = footerY - indicatorHeight - gapIndicatorToFooter;
-        layOutChild(this.indicator, 0, indicatorY, contentWidth, indicatorHeight);
 
+        layOutChild(this.indicator, 0, indicatorY, contentWidth, indicatorHeight);
         layOutChild(this.footerOverview, 0, footerY, contentWidth, footerHeight);
 
         int menuWidth = this.menuContainer.getMenuWidth();
@@ -311,6 +345,7 @@ public class MainPage extends Container {
         int menuX = (contentWidth - menuWidth) / 2;
         int menuOpenY = contentHeight - menuHeight;
         int menuY = this.menuOpen ? menuOpenY : contentHeight;
+
         layOutChild(this.menuContainer, menuX, menuY, menuWidth, menuHeight);
 
         int sensorDetailY = this.sensorDetailOpen ? 0 : contentHeight;
@@ -318,6 +353,9 @@ public class MainPage extends Container {
 
         int actuatorDetailY = this.actuatorDetailOpen ? 0 : contentHeight;
         layOutChild(this.actuatorDetail, 0, actuatorDetailY, contentWidth, contentHeight);
+
+        int wifiProvisioningModalY = this.wifiProvisioningModalOpen ? 0 : contentHeight;
+        layOutChild(this.wifiProvisioningModal, 0, wifiProvisioningModalY, contentWidth, contentHeight);
     }
 
     @Override
@@ -338,16 +376,13 @@ public class MainPage extends Container {
 
         computeChildOptimalSize(this.headerOverview, displayWidth, headerHeight);
         computeChildOptimalSize(this.trayLabel, displayWidth, trayLabelHeight);
-
         computeChildOptimalSize(this.overview, displayWidth, mainContentHeight);
-
         computeChildOptimalSize(this.indicator, displayWidth, indicatorHeight);
         computeChildOptimalSize(this.footerOverview, displayWidth, footerHeight);
-
         computeChildOptimalSize(this.menuContainer, displayWidth, this.menuContainer.getMenuHeight());
-
         computeChildOptimalSize(this.sensorDetail, displayWidth, displayHeight);
         computeChildOptimalSize(this.actuatorDetail, displayWidth, displayHeight);
+        computeChildOptimalSize(this.wifiProvisioningModal, displayWidth, displayHeight);
 
         size.setSize(displayWidth, displayHeight);
     }
