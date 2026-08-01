@@ -45,9 +45,15 @@ public class HeaderController {
     private boolean wifiConnectionRunning;
     private volatile boolean provisioningSmokeTestRunning;
 
+    private volatile boolean provisioningCredentialsSubmitted;
+    private volatile String submittedProvisioningSsid;
+    private volatile String submittedProvisioningPassword;
+
     private static final String[] NTP_SERVERS = {"time.google.com", "0.pool.ntp.org"};
     private static final int NTP_TIMEOUT_MS = 5000;
     private static final long NETWORK_READY_DELAY_MS = 3000L;
+    private static final long PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS = 250L;
+    private static final long PROVISIONING_HTTP_RESPONSE_GRACE_MS = 1500L;
     private static final long PROVISIONING_SOFT_AP_TEST_DURATION_MS = 300000L;
     private static final long PROVISIONING_CLIENT_RESTART_DELAY_MS = 1500L;
     private long headerNtpTimeMillis;
@@ -62,6 +68,9 @@ public class HeaderController {
         this.mainPage = mainPage;
         this.wifiService = new WifiHardwareService();
         this.provisioningHttpServer = null;
+        this.provisioningCredentialsSubmitted = false;
+        this.submittedProvisioningSsid = null;
+        this.submittedProvisioningPassword = null;
         this.clockTimer = null;
 
         this.periodicTask = null;
@@ -134,8 +143,16 @@ public class HeaderController {
     }
 
     private void runProvisioningSmokeTest() {
-        boolean reconnected = false;
+        boolean connected = false;
+        boolean credentialsSubmitted = false;
+        boolean selectedNetworkConnected = false;
+
+        String targetSsid = null;
+        String targetPassword = null;
         String testError = null;
+
+        clearSubmittedProvisioningCredentials();
+
         try {
             LOGGER.log(Level.INFO, "Provisioning smoke test started");
             AccessPoint[] accessPoints = this.wifiService.scanProvisioningNetworks();
@@ -147,22 +164,37 @@ public class HeaderController {
             LOGGER.log(Level.INFO, "HOKA provisioning server started" + " | port=80");
             LOGGER.log(
                     Level.INFO,
-                    "Provisioning SoftAP smoke test active"
+                    "Provisioning portal active"
                             + " | SSID="
                             + this.wifiService
                             .getProvisioningSsid()
                             + " | password="
                             + this.wifiService
                             .getProvisioningPassword()
-                            + " | durationMs="
+                            + " | timeoutMs="
                             + PROVISIONING_SOFT_AP_TEST_DURATION_MS
             );
-            Thread.sleep(PROVISIONING_SOFT_AP_TEST_DURATION_MS);
-            LOGGER.log(Level.INFO, "Provisioning SoftAP smoke test" + " duration completed");
+
+            credentialsSubmitted = waitForProvisioningCredentials(PROVISIONING_SOFT_AP_TEST_DURATION_MS);
+            if (credentialsSubmitted) {
+                targetSsid = this.submittedProvisioningSsid;
+                targetPassword = this.submittedProvisioningPassword;
+                LOGGER.log(
+                        Level.INFO,
+                        "Provisioning submission detected"
+                                + " | SSID="
+                                + targetSsid
+                                + " | waitingForHttpResponseMs="
+                                + PROVISIONING_HTTP_RESPONSE_GRACE_MS
+                );
+                Thread.sleep(PROVISIONING_HTTP_RESPONSE_GRACE_MS);
+            } else {
+                LOGGER.log(Level.WARNING, "Provisioning portal timed out" + " | timeoutMs=" + PROVISIONING_SOFT_AP_TEST_DURATION_MS);
+            }
         } catch (InterruptedException exception) {
             testError = "Provisioning worker interrupted" + " | error=" + exception;
         } catch (Exception exception) {
-            testError = "Provisioning smoke test failed" + " | error=" + exception;
+            testError = "Provisioning process failed" + " | error=" + exception;
         } finally {
             if (this.provisioningHttpServer != null) {
                 try {
@@ -170,11 +202,15 @@ public class HeaderController {
                     this.provisioningHttpServer.stop();
                     LOGGER.log(Level.INFO, "HOKA provisioning server stopped");
                 } catch (Exception exception) {
-                    LOGGER.log(Level.SEVERE, "Failed to stop HOKA provisioning server", exception);
+                    LOGGER.log(Level.WARNING, "Unable to stop HOKA provisioning server" + " | error=" + exception);
+                    if (testError == null) {
+                        testError = "Unable to stop HOKA server" + " | error=" + exception;
+                    }
                 } finally {
                     this.provisioningHttpServer = null;
                 }
             }
+
             try {
                 this.wifiService.stopProvisioningAccessPoint();
             } catch (Exception exception) {
@@ -186,62 +222,114 @@ public class HeaderController {
             try {
                 Thread.sleep(PROVISIONING_CLIENT_RESTART_DELAY_MS);
             } catch (InterruptedException exception) {
-                LOGGER.log(Level.WARNING, "Provisioning reconnect delay" + " interrupted" + " | error=" + exception);
+                LOGGER.log(Level.WARNING, "Provisioning client restart delay interrupted" + " | error=" + exception);
             }
-            try {
-                LOGGER.log(
-                        Level.INFO,
-                        "Reconnecting configured WiFi"
-                                + " after provisioning test"
-                                + " | SSID="
-                                + this.wifiService
-                                .getConfiguredSsid()
-                );
+            if (credentialsSubmitted && targetSsid != null) {
+                try {
+                    LOGGER.log(Level.INFO, "Connecting to submitted WiFi" + " | SSID=" + targetSsid);
+                    selectedNetworkConnected = this.wifiService.connectToNetwork(targetSsid, targetPassword);
+                    connected = selectedNetworkConnected;
+                    LOGGER.log(
+                            selectedNetworkConnected
+                                    ? Level.INFO
+                                    : Level.WARNING,
+                            "Submitted WiFi connection completed"
+                                    + " | SSID="
+                                    + targetSsid
+                                    + " | connected="
+                                    + selectedNetworkConnected
+                    );
+                } catch (Exception exception) {
+                    LOGGER.log(
+                            Level.WARNING,
+                            "Submitted WiFi connection failed"
+                                    + " | SSID="
+                                    + targetSsid
+                                    + " | error="
+                                    + exception
+                    );
+                    if (testError == null) {
+                        testError =
+                                "Submitted WiFi connection failed"
+                                        + " | SSID="
+                                        + targetSsid
+                                        + " | error="
+                                        + exception;
+                    }
+                }
+            }
+            if (!connected) {
+                try {
+                    LOGGER.log(Level.INFO, "Reconnecting configured WiFi" + " | SSID=" + this.wifiService.getConfiguredSsid());
+                    connected = this.wifiService.connectConfiguredNetwork();
+                    LOGGER.log(
+                            connected
+                                    ? Level.INFO
+                                    : Level.WARNING,
+                            "Configured WiFi fallback completed"
+                                    + " | SSID="
+                                    + this.wifiService
+                                    .getConfiguredSsid()
+                                    + " | connected="
+                                    + connected
+                    );
+                } catch (Exception exception) {
+                    LOGGER.log(Level.WARNING, "Configured WiFi fallback failed" + " | error=" + exception);
+                    if (testError == null) {
+                        testError = "Configured WiFi fallback failed" + " | error=" + exception;
+                    }
+                }
+            }
 
-                reconnected = this.wifiService.connectConfiguredNetwork();
-                if (reconnected) {
+            if (connected) {
+                try {
                     Thread.sleep(NETWORK_READY_DELAY_MS);
                     boolean timeSynchronized = synchronizeHeaderTime();
                     if (!timeSynchronized) {
-                        LOGGER.log(Level.WARNING, "WiFi reconnected after" + " provisioning test," + " but NTP failed");
+                        LOGGER.log(Level.WARNING, "WiFi connected but NTP synchronization failed");
+                    }
+                } catch (InterruptedException exception) {
+                    LOGGER.log(Level.WARNING, "Post-provisioning network delay interrupted" + " | error=" + exception);
+                    if (testError == null) {
+                        testError = "Post-provisioning delay interrupted" + " | error=" + exception;
                     }
                 }
-            } catch (InterruptedException exception) {
-                LOGGER.log(Level.WARNING, "Post-provisioning network delay" + " interrupted" + " | error=" + exception);
-                if (testError == null) {
-                    testError = "Reconnect delay interrupted" + " | error=" + exception;
-                }
-            } catch (Exception exception) {
-                LOGGER.log(Level.WARNING, "Configured WiFi reconnect failed" + " after provisioning test" + " | error=" + exception);
-                if (testError == null) {
-                    testError = "Configured WiFi reconnect failed" + " | error=" + exception;
-                }
             }
+
+            clearSubmittedProvisioningCredentials();
+            targetPassword = null;
         }
 
-        final boolean finalReconnectResult = reconnected;
+        final boolean finalConnectionResult = connected;
+        final boolean finalCredentialsSubmitted = credentialsSubmitted;
+        final boolean finalSelectedNetworkConnected = selectedNetworkConnected;
+        final String finalTargetSsid = targetSsid;
         final String finalTestError = testError;
         MicroUI.callSerially(
                 new Runnable() {
                     @Override
                     public void run() {
                         HeaderController.this.provisioningSmokeTestRunning = false;
-                        HeaderController.this.mainPage.updateWifiConnectionStatus(finalReconnectResult);
-                        if (finalTestError == null) {
+                        HeaderController.this.mainPage.updateWifiConnectionStatus(finalConnectionResult);
+                        if (finalSelectedNetworkConnected) {
+                            LOGGER.log(Level.INFO, "WiFi provisioning completed successfully" + " | SSID=" + finalTargetSsid);
+                        } else if (finalCredentialsSubmitted) {
                             LOGGER.log(
-                                    Level.INFO,
-                                    "Provisioning smoke test"
-                                            + " completed successfully"
-                                            + " | WiFi reconnected="
-                                            + finalReconnectResult
+                                    Level.WARNING,
+                                    "Selected WiFi was not connected"
+                                            + " | requestedSSID="
+                                            + finalTargetSsid
+                                            + " | fallbackConnected="
+                                            + finalConnectionResult
+                                            + " | error="
+                                            + finalTestError
                             );
                         } else {
                             LOGGER.log(
                                     Level.WARNING,
-                                    "Provisioning smoke test"
-                                            + " completed with error"
-                                            + " | WiFi reconnected="
-                                            + finalReconnectResult
+                                    "Provisioning portal closed without submission"
+                                            + " | configuredWiFiConnected="
+                                            + finalConnectionResult
                                             + " | error="
                                             + finalTestError
                             );
@@ -287,20 +375,110 @@ public class HeaderController {
                             String password = parameters.get("password");
                             if (ssid == null || ssid.length() == 0) {
                                 LOGGER.log(Level.WARNING, "Provisioning form rejected" + " | reason=SSID is empty");
-                                setProvisioningHtmlResponse(response, buildProvisioningMessagePage("Data belum lengkap", "Pilih salah satu jaringan Wi-Fi.", false));
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        buildProvisioningMessagePage(
+                                                "Data belum lengkap",
+                                                "Pilih salah satu jaringan Wi-Fi.",
+                                                false
+                                        )
+                                );
                                 return;
                             }
-
                             if (password == null) {
                                 password = "";
                             }
+                            if (!isProvisioningSsidAllowed(accessPoints, ssid)) {
+                                LOGGER.log(Level.WARNING, "Provisioning form rejected" + " | reason=SSID is not in scan result" + " | SSID=" + ssid);
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        buildProvisioningMessagePage(
+                                                "Jaringan tidak valid",
+                                                "Jaringan yang dipilih tidak terdapat "
+                                                        + "dalam hasil pemindaian perangkat.",
+                                                false
+                                        )
+                                );
+                                return;
+                            }
+                            if (password.length() < 8 || password.length() > 64) {
+                                LOGGER.log(
+                                        Level.WARNING,
+                                        "Provisioning form rejected"
+                                                + " | reason=Invalid password length"
+                                                + " | SSID="
+                                                + ssid
+                                                + " | passwordLength="
+                                                + password.length()
+                                );
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        buildProvisioningMessagePage(
+                                                "Password tidak valid",
+                                                "Password Wi-Fi harus terdiri dari "
+                                                        + "8 sampai 64 karakter.",
+                                                false
+                                        )
+                                );
+                                return;
+                            }
+                            if (HeaderController.this.provisioningCredentialsSubmitted) {
+                                LOGGER.log(Level.INFO, "Provisioning connection already queued");
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        buildProvisioningMessagePage(
+                                                "Koneksi sedang diproses",
+                                                "Perangkat sedang mencoba terhubung "
+                                                        + "ke jaringan yang telah dipilih.",
+                                                true
+                                        )
+                                );
+                                return;
+                            }
 
-                            LOGGER.log(Level.INFO, "Provisioning credentials received" + " | SSID=" + ssid + " | passwordLength=" + password.length());
-                            setProvisioningHtmlResponse(response, buildProvisioningMessagePage("Data berhasil diterima", "SSID " + ssid + " dan password sudah diterima oleh perangkat. " + "Pada tahap ini perangkat belum berpindah jaringan.", true));
-                            LOGGER.log(Level.INFO, "Provisioning credentials response prepared" + " | SSID=" + ssid + " | status=200");
+                            LOGGER.log(
+                                    Level.INFO,
+                                    "Provisioning credentials received"
+                                            + " | SSID="
+                                            + ssid
+                                            + " | passwordLength="
+                                            + password.length()
+                            );
+                            setProvisioningHtmlResponse(
+                                    response,
+                                    buildProvisioningMessagePage(
+                                            "Menghubungkan perangkat",
+                                            "Data Wi-Fi berhasil diterima. "
+                                                    + "Perangkat akan menutup hotspot "
+                                                    + "dan mencoba terhubung ke "
+                                                    + ssid
+                                                    + ". Koneksi HP ke halaman ini "
+                                                    + "akan terputus.",
+                                            true
+                                    )
+                            );
+                            HeaderController.this.submittedProvisioningSsid = ssid;
+                            HeaderController.this.submittedProvisioningPassword = password;
+                            HeaderController.this.provisioningCredentialsSubmitted = true;
+                            LOGGER.log(
+                                    Level.INFO,
+                                    "Provisioning credentials queued"
+                                            + " | SSID="
+                                            + ssid
+                                            + " | passwordLength="
+                                            + password.length()
+                            );
                         } catch (IOException exception) {
                             LOGGER.log(Level.SEVERE, "Failed to parse provisioning form", exception);
-                            setProvisioningHtmlResponse(response, buildProvisioningMessagePage("Terjadi kesalahan", "Perangkat tidak dapat membaca data formulir.", false));
+                            setProvisioningHtmlResponse(
+                                    response,
+                                    buildProvisioningMessagePage(
+                                            "Terjadi kesalahan",
+                                            "Perangkat tidak dapat membaca "
+                                                    + "data formulir.",
+                                            false
+                                    )
+                            );
                         }
                     }
                 }
@@ -484,8 +662,9 @@ public class HeaderController {
                             + "id='password' "
                             + "name='password' "
                             + "type='password' "
-                            + "maxlength='63' "
-                            + "autocomplete='new-password' "
+                            + "minlength='8' "
+                            + "maxlength='64' "
+                            + "required "
                             + "placeholder='Masukkan password Wi-Fi'>"
             );
             html.append("<button class='button' type='submit'>" + "Hubungkan" + "</button>");
@@ -628,6 +807,46 @@ public class HeaderController {
         }
 
         return escaped.toString();
+    }
+
+    private static boolean isProvisioningSsidAllowed(AccessPoint[] accessPoints, String ssid) {
+        if (accessPoints == null || ssid == null || ssid.length() == 0) {
+            return false;
+        }
+
+        for (int index = 0; index < accessPoints.length; index++) {
+            AccessPoint accessPoint = accessPoints[index];
+            if (accessPoint == null) {
+                continue;
+            }
+
+            if (ssid.equals(accessPoint.getSSID())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean waitForProvisioningCredentials(long timeoutMilliseconds) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMilliseconds;
+        while (!this.provisioningCredentialsSubmitted) {
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0L) {
+                return false;
+            }
+
+            long sleepDuration = remaining < PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS ? remaining : PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS;
+            Thread.sleep(sleepDuration);
+        }
+
+        return true;
+    }
+
+    private void clearSubmittedProvisioningCredentials() {
+        this.provisioningCredentialsSubmitted = false;
+        this.submittedProvisioningSsid = null;
+        this.submittedProvisioningPassword = null;
     }
 
     private static void logProvisioningNetworks(AccessPoint[] accessPoints) {
