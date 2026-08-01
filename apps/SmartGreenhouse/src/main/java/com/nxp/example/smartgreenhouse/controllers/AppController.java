@@ -11,9 +11,12 @@ import com.nxp.example.smartgreenhouse.services.mqtt.MqttSubscribeService;
 import com.nxp.example.smartgreenhouse.state.AppState;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 public class AppController {
 
-    private static final boolean ENABLE_MQTT_DURING_PROVISIONING_SMOKE_TEST = false;
+    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: APP CONTROLLER]");
 
     private final MainPage mainPage;
 
@@ -31,18 +34,24 @@ public class AppController {
 
     public AppController() {
         this.mainPage = new MainPage();
+
         AppState appState = new AppState();
         SensorDataStore sensorDataStore = new SensorDataStore();
+
         this.sensorHistoryStore = new SensorHistoryStore();
         this.actuatorDataStore = new ActuatorDataStore();
+
         this.headerController = new HeaderController(this.mainPage);
         this.overviewController = new OverviewController(this.mainPage, appState, sensorDataStore);
         this.sensorDetailController = new SensorDetailController(this.mainPage, appState, sensorDataStore, this.sensorHistoryStore);
         this.actuatorDetailController = new ActuatorDetailController(this.mainPage, appState, this.actuatorDataStore);
         this.menuController = new MenuController(this.mainPage, appState, this.sensorDetailController, this.actuatorDetailController);
+
         this.loRaHardwareService = new LoRaHardwareService(sensorDataStore, this.sensorHistoryStore, this.overviewController, this.sensorDetailController);
         this.mqttSubscribeService = new MqttSubscribeService(this.actuatorDataStore, this.actuatorDetailController);
+
         this.actuatorDetailController.setMqttSubscribeService(this.mqttSubscribeService);
+
         this.headerController.setPeriodicTask(
                 new Runnable() {
                     @Override
@@ -51,16 +60,39 @@ public class AppController {
                     }
                 }
         );
-        if (ENABLE_MQTT_DURING_PROVISIONING_SMOKE_TEST) {
-            this.headerController.setWifiConnectedTask(
-                    new Runnable() {
-                        @Override
-                        public void run() {
-                            AppController.this.mqttSubscribeService.start();
-                        }
+
+        this.headerController.setWifiProvisioningStartedTask(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        LOGGER.log(Level.INFO, "WiFi provisioning starting | pausing MQTT");
+                        AppController.this.mqttSubscribeService.pauseForWifiProvisioning();
                     }
-            );
-        }
+                }
+        );
+
+        this.headerController.setWifiConnectedTask(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        LOGGER.log(Level.INFO, "WiFi connected | synchronizing time");
+
+                        try {
+                            boolean synchronizedTime = AppController.this.headerController.synchronizeTime();
+
+                            if (synchronizedTime) {
+                                LOGGER.log(Level.INFO, "NTP synchronization successful");
+                            } else {
+                                LOGGER.log(Level.WARNING, "NTP synchronization failed | MQTT will still be started");
+                            }
+                        } catch (RuntimeException exception) {
+                            LOGGER.log(Level.WARNING, "NTP synchronization failed | MQTT will still be started | error=" + exception);
+                        }
+
+                        AppController.this.mqttSubscribeService.resumeAfterWifiProvisioning();
+                    }
+                }
+        );
     }
 
     public MainPage getMainPage() {
