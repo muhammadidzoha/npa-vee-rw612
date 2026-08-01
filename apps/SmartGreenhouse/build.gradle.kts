@@ -17,6 +17,7 @@ dependencies {
     implementation(libs.api.ecom.wifi)
     implementation("ej.library.iot:micropaho:1.0.0")
     implementation("ej.library.iot:sntpclient:1.4.0")
+    implementation("ej.library.iot:hoka:8.4.0")
     implementation(libs.api.net)
     implementation(libs.api.kf)
 
