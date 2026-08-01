@@ -1,345 +1,468 @@
 package com.nxp.example.smartgreenhouse.services.wifi;
 
-import com.nxp.example.smartgreenhouse.services.time.TimeService;
+import com.nxp.example.smartgreenhouse.models.wifi.WifiCredentials;
+import com.nxp.example.smartgreenhouse.models.wifi.WifiProvisioningState;
+import com.nxp.example.smartgreenhouse.views.wifi.WifiPortalView;
 
 import ej.ecom.wifi.AccessPoint;
 import ej.ecom.wifi.WifiCapability;
-import ej.microui.MicroUI;
 
 import ej.hoka.http.HttpRequest;
 import ej.hoka.http.HttpResponse;
 import ej.hoka.http.HttpServer;
-import ej.hoka.http.requesthandler.RequestHandler;
 import ej.hoka.http.body.ParameterParser;
+import ej.hoka.http.requesthandler.RequestHandler;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.Map;
-
 
 public final class WifiProvisioningService {
 
-    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: WIFI PROVISIONING SERVICE]");
-
     public interface Listener {
+
+        void onStateChanged(int state);
+
         void onWifiConnectionStatusChanged(boolean connected);
+
+        void onProvisioningReady(String ssid, String password, String portalUrl, int networkCount);
+
+        void onConnecting(String ssid);
+
+        void onConnected(String ssid);
+
+        void onFailed(String message);
     }
 
-    private final WifiHardwareService wifiService;
-    private final TimeService timeService;
+    private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: WIFI PROVISIONING SERVICE]");
+
+    private static final String PROVISIONING_PORTAL_URL = "http://192.168.4.1/";
+    private static final long PROVISIONING_TIMEOUT_MS = 300000L;
+    private static final long PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS = 250L;
+    private static final long PROVISIONING_HTTP_RESPONSE_GRACE_MS = 1500L;
+    private static final long PROVISIONING_CLIENT_RESTART_DELAY_MS = 1500L;
+
+    private final WifiHardwareService wifiHardwareService;
+    private final WifiCredentialStore credentialStore;
     private final Listener listener;
+    private final Object stateLock;
 
-    private HttpServer provisioningHttpServer;
-
-    private Runnable wifiConnectedTask;
-
-    private boolean wifiConnectionRunning;
-    private volatile boolean provisioningSmokeTestRunning;
-
+    private volatile int state;
+    private volatile boolean autoConnectRunning;
+    private volatile boolean provisioningRunning;
     private volatile boolean provisioningCredentialsSubmitted;
+
     private volatile String submittedProvisioningSsid;
     private volatile String submittedProvisioningPassword;
 
-    private static final long NETWORK_READY_DELAY_MS = 3000L;
-    private static final long PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS = 250L;
-    private static final long PROVISIONING_HTTP_RESPONSE_GRACE_MS = 1500L;
-    private static final long PROVISIONING_SOFT_AP_TEST_DURATION_MS = 300000L;
-    private static final long PROVISIONING_CLIENT_RESTART_DELAY_MS = 1500L;
+    private HttpServer provisioningHttpServer;
 
-    public WifiProvisioningService(TimeService timeService, Listener listener) {
-        if (timeService == null) {
-            throw new NullPointerException("timeService tidak boleh null.");
+    public WifiProvisioningService(Listener listener) {
+        this(new WifiHardwareService(), new FlashWifiCredentialStore(), listener);
+    }
+
+    public WifiProvisioningService(WifiHardwareService wifiHardwareService, WifiCredentialStore credentialStore, Listener listener) {
+        if (wifiHardwareService == null) {
+            throw new NullPointerException("wifiHardwareService tidak boleh null.");
         }
 
-        this.wifiService = new WifiHardwareService();
-        this.timeService = timeService;
+        if (credentialStore == null) {
+            throw new NullPointerException("credentialStore tidak boleh null.");
+        }
+
+        if (listener == null) {
+            throw new NullPointerException("listener tidak boleh null.");
+        }
+
+        this.wifiHardwareService = wifiHardwareService;
+        this.credentialStore = credentialStore;
         this.listener = listener;
+        this.stateLock = new Object();
 
-        this.provisioningHttpServer = null;
-        this.wifiConnectedTask = null;
-
-        this.wifiConnectionRunning = false;
-        this.provisioningSmokeTestRunning = false;
-
+        this.state = WifiProvisioningState.IDLE;
+        this.autoConnectRunning = false;
+        this.provisioningRunning = false;
         this.provisioningCredentialsSubmitted = false;
+
         this.submittedProvisioningSsid = null;
         this.submittedProvisioningPassword = null;
+
+        this.provisioningHttpServer = null;
     }
 
-    public void setWifiConnectedTask(Runnable wifiConnectedTask) {
-        this.wifiConnectedTask = wifiConnectedTask;
+    public int getState() {
+        return this.state;
     }
 
-    private void notifyConnectionStatus(boolean connected) {
-        if (this.listener != null) {
-            this.listener.onWifiConnectionStatusChanged(connected);
-        }
+    public boolean isBusy() {
+        return this.autoConnectRunning || this.provisioningRunning;
     }
 
-    public void startProvisioningSmokeTest() {
-        if (this.provisioningSmokeTestRunning) {
-            LOGGER.log(Level.WARNING, "Provisioning smoke test ignored" + " | test is already running");
-            return;
-        }
-
-        if (this.wifiConnectionRunning) {
-            LOGGER.log(Level.WARNING, "Provisioning smoke test ignored" + " | automatic WiFi connection" + " is still running");
-            return;
-        }
-
-        this.provisioningSmokeTestRunning = true;
-        notifyConnectionStatus(false);
-
-        LOGGER.log(Level.INFO, "Provisioning smoke test requested");
-        Thread worker =
-                new Thread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                WifiProvisioningService.this.runProvisioningSmokeTest();
-                            }
-                        },
-                        "wifi-provisioning-smoke-test"
-                );
-
-        try {
-            worker.start();
-        } catch (Error error) {
-            this.provisioningSmokeTestRunning = false;
-            LOGGER.log(Level.SEVERE, "Unable to start provisioning" + " smoke test worker" + " | error=" + error);
-        }
+    public boolean isProvisioningRunning() {
+        return this.provisioningRunning;
     }
 
-    private void runProvisioningSmokeTest() {
-        boolean connected = false;
-        boolean credentialsSubmitted = false;
-        boolean selectedNetworkConnected = false;
+    public boolean isAutoConnectRunning() {
+        return this.autoConnectRunning;
+    }
 
-        String targetSsid = null;
-        String targetPassword = null;
-        String testError = null;
+    public WifiCredentialStore getCredentialStore() {
+        return this.credentialStore;
+    }
 
-        clearSubmittedProvisioningCredentials();
-
-        try {
-            LOGGER.log(Level.INFO, "Provisioning smoke test started");
-            AccessPoint[] accessPoints = this.wifiService.scanProvisioningNetworks();
-            logProvisioningNetworks(accessPoints);
-            this.wifiService.startProvisioningAccessPoint();
-            this.provisioningHttpServer = createProvisioningHttpServer(accessPoints);
-
-            LOGGER.log(Level.INFO, "Starting HOKA provisioning server" + " | port=80");
-
-            this.provisioningHttpServer.start();
-
-            LOGGER.log(Level.INFO, "HOKA provisioning server started" + " | port=80");
-
-            LOGGER.log(
-                    Level.INFO,
-                    "Provisioning portal active"
-                            + " | SSID="
-                            + this.wifiService
-                            .getProvisioningSsid()
-                            + " | password="
-                            + this.wifiService
-                            .getProvisioningPassword()
-                            + " | timeoutMs="
-                            + PROVISIONING_SOFT_AP_TEST_DURATION_MS
-            );
-
-            credentialsSubmitted = waitForProvisioningCredentials(PROVISIONING_SOFT_AP_TEST_DURATION_MS);
-            if (credentialsSubmitted) {
-                targetSsid = this.submittedProvisioningSsid;
-                targetPassword = this.submittedProvisioningPassword;
-                LOGGER.log(
-                        Level.INFO,
-                        "Provisioning submission detected"
-                                + " | SSID="
-                                + targetSsid
-                                + " | waitingForHttpResponseMs="
-                                + PROVISIONING_HTTP_RESPONSE_GRACE_MS
-                );
-
-                Thread.sleep(PROVISIONING_HTTP_RESPONSE_GRACE_MS);
-            } else {
-                LOGGER.log(Level.WARNING, "Provisioning portal timed out" + " | timeoutMs=" + PROVISIONING_SOFT_AP_TEST_DURATION_MS);
-            }
-        } catch (InterruptedException exception) {
-            testError = "Provisioning worker interrupted" + " | error=" + exception;
-        } catch (Exception exception) {
-            testError = "Provisioning process failed" + " | error=" + exception;
-        } finally {
-            if (this.provisioningHttpServer != null) {
-                try {
-                    LOGGER.log(Level.INFO, "Stopping HOKA provisioning server");
-                    this.provisioningHttpServer.stop();
-                    LOGGER.log(Level.INFO, "HOKA provisioning server stopped");
-                } catch (Exception exception) {
-                    LOGGER.log(Level.WARNING, "Unable to stop HOKA provisioning server" + " | error=" + exception);
-                    if (testError == null) {
-                        testError = "Unable to stop HOKA server" + " | error=" + exception;
-                    }
-                } finally {
-                    this.provisioningHttpServer = null;
-                }
+    public boolean tryAutoConnect() {
+        synchronized (this.stateLock) {
+            if (this.autoConnectRunning || this.provisioningRunning) {
+                LOGGER.log(Level.WARNING, "Automatic WiFi connection ignored | service is busy");
+                return false;
             }
 
-            try {
-                this.wifiService.stopProvisioningAccessPoint();
-            } catch (Exception exception) {
-                LOGGER.log(Level.WARNING, "Unable to stop provisioning SoftAP" + " | error=" + exception);
-                if (testError == null) {
-                    testError = "Unable to stop SoftAP" + " | error=" + exception;
-                }
-            }
-
-            try {
-                Thread.sleep(PROVISIONING_CLIENT_RESTART_DELAY_MS);
-            } catch (InterruptedException exception) {
-                LOGGER.log(Level.WARNING, "Provisioning client restart delay interrupted" + " | error=" + exception);
-            }
-
-            if (credentialsSubmitted && targetSsid != null) {
-                try {
-                    LOGGER.log(Level.INFO, "Connecting to submitted WiFi" + " | SSID=" + targetSsid);
-                    selectedNetworkConnected = this.wifiService.connectToNetwork(targetSsid, targetPassword);
-                    connected = selectedNetworkConnected;
-                    LOGGER.log(
-                            selectedNetworkConnected
-                                    ? Level.INFO
-                                    : Level.WARNING,
-                            "Submitted WiFi connection completed"
-                                    + " | SSID="
-                                    + targetSsid
-                                    + " | connected="
-                                    + selectedNetworkConnected
-                    );
-                } catch (Exception exception) {
-                    LOGGER.log(
-                            Level.WARNING,
-                            "Submitted WiFi connection failed"
-                                    + " | SSID="
-                                    + targetSsid
-                                    + " | error="
-                                    + exception
-                    );
-
-                    if (testError == null) {
-                        testError =
-                                "Submitted WiFi connection failed"
-                                        + " | SSID="
-                                        + targetSsid
-                                        + " | error="
-                                        + exception;
-                    }
-                }
-            }
-
-            if (!connected) {
-                try {
-                    LOGGER.log(Level.INFO, "Reconnecting configured WiFi" + " | SSID=" + this.wifiService.getConfiguredSsid());
-                    connected = this.wifiService.connectConfiguredNetwork();
-                    LOGGER.log(
-                            connected
-                                    ? Level.INFO
-                                    : Level.WARNING,
-                            "Configured WiFi fallback completed"
-                                    + " | SSID="
-                                    + this.wifiService
-                                    .getConfiguredSsid()
-                                    + " | connected="
-                                    + connected
-                    );
-                } catch (Exception exception) {
-                    LOGGER.log(Level.WARNING, "Configured WiFi fallback failed" + " | error=" + exception);
-                    if (testError == null) {
-                        testError = "Configured WiFi fallback failed" + " | error=" + exception;
-                    }
-                }
-            }
-
-            if (connected) {
-                try {
-                    Thread.sleep(NETWORK_READY_DELAY_MS);
-                    boolean timeSynchronized = this.timeService.synchronizeTime();
-                    if (!timeSynchronized) {
-                        LOGGER.log(Level.WARNING, "WiFi connected but NTP synchronization failed");
-                    }
-                } catch (InterruptedException exception) {
-                    LOGGER.log(Level.WARNING, "Post-provisioning network delay interrupted" + " | error=" + exception);
-                    if (testError == null) {
-                        testError = "Post-provisioning delay interrupted" + " | error=" + exception;
-                    }
-                }
-            }
-
-            clearSubmittedProvisioningCredentials();
-            targetPassword = null;
+            this.autoConnectRunning = true;
         }
 
-        final boolean finalConnectionResult = connected;
-        final boolean finalCredentialsSubmitted = credentialsSubmitted;
-        final boolean finalSelectedNetworkConnected = selectedNetworkConnected;
+        setState(WifiProvisioningState.AUTO_CONNECTING);
 
-        final String finalTargetSsid = targetSsid;
-        final String finalTestError = testError;
-        MicroUI.callSerially(
+        Thread worker = new Thread(
                 new Runnable() {
                     @Override
                     public void run() {
-                        WifiProvisioningService.this.provisioningSmokeTestRunning = false;
-                        WifiProvisioningService.this.notifyConnectionStatus(finalConnectionResult);
-                        if (finalSelectedNetworkConnected) {
-                            LOGGER.log(Level.INFO, "WiFi provisioning completed successfully" + " | SSID=" + finalTargetSsid);
-                        } else if (finalCredentialsSubmitted) {
-                            LOGGER.log(
-                                    Level.WARNING,
-                                    "Selected WiFi was not connected"
-                                            + " | requestedSSID="
-                                            + finalTargetSsid
-                                            + " | fallbackConnected="
-                                            + finalConnectionResult
-                                            + " | error="
-                                            + finalTestError
-                            );
-                        } else {
-                            LOGGER.log(
-                                    Level.WARNING,
-                                    "Provisioning portal closed without submission"
-                                            + " | configuredWiFiConnected="
-                                            + finalConnectionResult
-                                            + " | error="
-                                            + finalTestError
-                            );
-                        }
+                        WifiProvisioningService.this.runAutoConnect();
                     }
-                }
+                },
+                "wifi-auto-connect"
         );
+
+        try {
+            worker.start();
+            return true;
+        } catch (Error error) {
+            synchronized (this.stateLock) {
+                this.autoConnectRunning = false;
+            }
+
+            setState(WifiProvisioningState.IDLE);
+            notifyConnectionStatus(false);
+            notifyFailed("Tidak dapat menjalankan proses koneksi Wi-Fi otomatis.");
+
+            LOGGER.log(Level.SEVERE, "Unable to start automatic WiFi connection worker | error=" + error);
+
+            return false;
+        }
+    }
+
+    public boolean startProvisioning() {
+        synchronized (this.stateLock) {
+            if (this.provisioningRunning || this.autoConnectRunning) {
+                LOGGER.log(Level.WARNING, "WiFi provisioning ignored | service is busy");
+                return false;
+            }
+
+            this.provisioningRunning = true;
+        }
+
+        clearSubmittedProvisioningCredentials();
+
+        setState(WifiProvisioningState.HOTSPOT_STARTING);
+        notifyConnectionStatus(false);
+
+        Thread worker = new Thread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        WifiProvisioningService.this.runProvisioning();
+                    }
+                },
+                "wifi-provisioning"
+        );
+
+        try {
+            worker.start();
+            return true;
+        } catch (Error error) {
+            synchronized (this.stateLock) {
+                this.provisioningRunning = false;
+            }
+
+            setState(WifiProvisioningState.FAILED);
+            notifyFailed("Tidak dapat menjalankan proses provisioning Wi-Fi.");
+
+            LOGGER.log(Level.SEVERE, "Unable to start WiFi provisioning worker | error=" + error);
+
+            return false;
+        }
+    }
+
+    private void runAutoConnect() {
+        WifiCredentials credentials = null;
+        boolean connected = false;
+        String failureMessage = null;
+
+        try {
+            credentials = this.credentialStore.load();
+
+            if (credentials == null) {
+                LOGGER.log(Level.INFO, "No stored WiFi credentials found");
+                finishAutoConnectWithoutCredential();
+                return;
+            }
+
+            LOGGER.log(Level.INFO, "Stored WiFi credential found | SSID=" + credentials.getSsid());
+
+            WifiCapability capability = this.wifiHardwareService.getCapability();
+            LOGGER.log(Level.INFO, "WiFi capability: " + capability);
+
+            connected = this.wifiHardwareService.connectToNetwork(credentials.getSsid(), credentials.getPassword());
+
+            if (!connected) {
+                failureMessage = "Tidak dapat terhubung ke Wi-Fi tersimpan: " + credentials.getSsid();
+            }
+        } catch (Exception exception) {
+            failureMessage = "Koneksi otomatis Wi-Fi gagal.";
+            LOGGER.log(Level.WARNING, "Automatic WiFi connection failed | error=" + exception);
+        }
+
+        synchronized (this.stateLock) {
+            this.autoConnectRunning = false;
+        }
+
+        if (connected && credentials != null) {
+            setState(WifiProvisioningState.CONNECTED);
+            notifyConnectionStatus(true);
+            notifyConnected(credentials.getSsid());
+
+            LOGGER.log(Level.INFO, "Automatic WiFi connection successful | SSID=" + credentials.getSsid());
+        } else {
+            setState(WifiProvisioningState.FAILED);
+            notifyConnectionStatus(false);
+
+            if (failureMessage != null) {
+                notifyFailed(failureMessage);
+            }
+        }
+    }
+
+    private void finishAutoConnectWithoutCredential() {
+        synchronized (this.stateLock) {
+            this.autoConnectRunning = false;
+        }
+
+        setState(WifiProvisioningState.IDLE);
+        notifyConnectionStatus(false);
+    }
+
+    private void runProvisioning() {
+        AccessPoint[] accessPoints = null;
+        String targetSsid = null;
+        String targetPassword = null;
+        String failureMessage = null;
+        boolean credentialsSubmitted = false;
+
+        try {
+            setState(WifiProvisioningState.NETWORK_SCANNING);
+
+            accessPoints = this.wifiHardwareService.scanProvisioningNetworks();
+
+            LOGGER.log(Level.INFO, "Provisioning WiFi scan completed | networkCount=" + countAccessPoints(accessPoints));
+
+            this.wifiHardwareService.startProvisioningAccessPoint();
+
+            this.provisioningHttpServer = createProvisioningHttpServer(accessPoints);
+
+            LOGGER.log(Level.INFO, "Starting HOKA provisioning server | port=80");
+
+            this.provisioningHttpServer.start();
+
+            LOGGER.log(Level.INFO, "HOKA provisioning server started | port=80");
+
+            setState(WifiProvisioningState.HOTSPOT_READY);
+
+            notifyProvisioningReady(
+                    this.wifiHardwareService.getProvisioningSsid(),
+                    this.wifiHardwareService.getProvisioningPassword(),
+                    PROVISIONING_PORTAL_URL,
+                    countAccessPoints(accessPoints)
+            );
+
+            LOGGER.log(
+                    Level.INFO,
+                    "Provisioning portal ready | SSID=" + this.wifiHardwareService.getProvisioningSsid()
+                            + " | portal=" + PROVISIONING_PORTAL_URL
+                            + " | networkCount=" + countAccessPoints(accessPoints)
+            );
+
+            credentialsSubmitted = waitForProvisioningCredentials(PROVISIONING_TIMEOUT_MS);
+
+            if (!credentialsSubmitted) {
+                failureMessage = "Waktu provisioning Wi-Fi telah habis.";
+            } else {
+                targetSsid = this.submittedProvisioningSsid;
+                targetPassword = this.submittedProvisioningPassword;
+
+                LOGGER.log(
+                        Level.INFO,
+                        "Provisioning credentials submitted | SSID=" + targetSsid
+                                + " | waitingForHttpResponseMs=" + PROVISIONING_HTTP_RESPONSE_GRACE_MS
+                );
+
+                Thread.sleep(PROVISIONING_HTTP_RESPONSE_GRACE_MS);
+            }
+        } catch (InterruptedException exception) {
+            failureMessage = "Proses provisioning Wi-Fi terhenti.";
+            LOGGER.log(Level.WARNING, "WiFi provisioning interrupted | error=" + exception);
+        } catch (Exception exception) {
+            failureMessage = "Terjadi kesalahan saat menjalankan provisioning Wi-Fi.";
+            LOGGER.log(Level.WARNING, "WiFi provisioning failed | error=" + exception);
+        } finally {
+            stopProvisioningHttpServer();
+
+            try {
+                this.wifiHardwareService.stopProvisioningAccessPoint();
+            } catch (Exception exception) {
+                LOGGER.log(Level.WARNING, "Unable to stop provisioning SoftAP | error=" + exception);
+            }
+        }
+
+        if (!credentialsSubmitted || targetSsid == null || targetSsid.length() == 0) {
+            finishProvisioningFailure(failureMessage == null ? "Provisioning Wi-Fi tidak selesai." : failureMessage);
+            clearSubmittedProvisioningCredentials();
+            return;
+        }
+
+        try {
+            Thread.sleep(PROVISIONING_CLIENT_RESTART_DELAY_MS);
+        } catch (InterruptedException exception) {
+            LOGGER.log(Level.WARNING, "Provisioning client restart delay interrupted | error=" + exception);
+        }
+
+        setState(WifiProvisioningState.CONNECTING);
+        notifyConnecting(targetSsid);
+
+        boolean connected = false;
+
+        try {
+            LOGGER.log(Level.INFO, "Connecting to provisioned WiFi | SSID=" + targetSsid);
+
+            connected = this.wifiHardwareService.connectToNetwork(targetSsid, targetPassword);
+
+            if (!connected) {
+                failureMessage = "Tidak dapat terhubung ke Wi-Fi " + targetSsid + ".";
+            }
+        } catch (Exception exception) {
+            failureMessage = "Koneksi ke Wi-Fi " + targetSsid + " gagal.";
+            LOGGER.log(Level.WARNING, "Provisioned WiFi connection failed | SSID=" + targetSsid + " | error=" + exception);
+        }
+
+        if (connected) {
+            try {
+                WifiCredentials credentials = new WifiCredentials(targetSsid, targetPassword);
+                this.credentialStore.save(credentials);
+
+                LOGGER.log(Level.INFO, "Provisioned WiFi credentials persisted | SSID=" + targetSsid);
+            } catch (RuntimeException exception) {
+                connected = false;
+                failureMessage = "Wi-Fi berhasil terhubung tetapi credential tidak dapat disimpan.";
+
+                LOGGER.log(Level.SEVERE, "Unable to persist provisioned WiFi credentials | SSID=" + targetSsid + " | error=" + exception);
+
+                try {
+                    this.wifiHardwareService.disconnectCurrentNetwork();
+                } catch (Exception disconnectException) {
+                    LOGGER.log(Level.WARNING, "Unable to disconnect WiFi after credential storage failure | error=" + disconnectException);
+                }
+            }
+        }
+
+        synchronized (this.stateLock) {
+            this.provisioningRunning = false;
+        }
+
+        clearSubmittedProvisioningCredentials();
+
+        if (connected) {
+            setState(WifiProvisioningState.CONNECTED);
+            notifyConnectionStatus(true);
+            notifyConnected(targetSsid);
+
+            LOGGER.log(Level.INFO, "WiFi provisioning successful | SSID=" + targetSsid);
+        } else {
+            setState(WifiProvisioningState.FAILED);
+            notifyConnectionStatus(false);
+            notifyFailed(failureMessage == null ? "Koneksi Wi-Fi gagal." : failureMessage);
+
+            LOGGER.log(Level.WARNING, "WiFi provisioning failed | SSID=" + targetSsid + " | reason=" + failureMessage);
+        }
     }
 
     private HttpServer createProvisioningHttpServer(final AccessPoint[] accessPoints) {
-        final int networkCount = countProvisioningAccessPoints(accessPoints);
-        LOGGER.log(Level.INFO, "Creating HOKA provisioning server configuration" + " | networkCount=" + networkCount);
-        HttpServer server =
-                HttpServer.builder()
-                        .port(80)
-                        .simultaneousConnections(1)
-                        .workerCount(1)
-                        .connectionTimeout(5000)
-                        .build();
+        HttpServer server = HttpServer.builder()
+                .port(80)
+                .simultaneousConnections(1)
+                .workerCount(1)
+                .connectionTimeout(5000)
+                .build();
 
         server.get(
                 "/",
                 new RequestHandler() {
                     @Override
                     public void process(HttpRequest request, HttpResponse response) {
-                        LOGGER.log(Level.INFO, "Provisioning HTTP request received" + " | method=GET" + " | path=/");
-                        String page = buildProvisioningPage(accessPoints);
-                        setProvisioningHtmlResponse(response, page);
-                        LOGGER.log(Level.INFO, "Provisioning HTTP response prepared" + " | status=200" + " | networkCount=" + networkCount);
+                        setProvisioningHtmlResponse(response, WifiPortalView.buildHomePage());
+                    }
+                }
+        );
+
+        server.get(
+                "/scan",
+                new RequestHandler() {
+                    @Override
+                    public void process(HttpRequest request, HttpResponse response) {
+                        setProvisioningHtmlResponse(response, WifiPortalView.buildNetworkListPage(accessPoints));
+                    }
+                }
+        );
+
+        server.post(
+                "/network",
+                new RequestHandler() {
+                    @Override
+                    public void process(HttpRequest request, HttpResponse response) {
+                        try {
+                            Map<String, String> parameters = request.parseBody(new ParameterParser());
+                            String ssid = parameters.get("ssid");
+
+                            if (ssid == null || ssid.length() == 0) {
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        WifiPortalView.buildErrorPage("Jaringan tidak valid", "Pilih salah satu jaringan Wi-Fi.")
+                                );
+                                return;
+                            }
+
+                            AccessPoint accessPoint = findAccessPointBySsid(accessPoints, ssid);
+
+                            if (accessPoint == null) {
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        WifiPortalView.buildErrorPage("Jaringan tidak valid", "Jaringan yang dipilih tidak ditemukan.")
+                                );
+                                return;
+                            }
+
+                            setProvisioningHtmlResponse(
+                                    response,
+                                    WifiPortalView.buildPasswordPage(accessPoint.getSSID(), accessPoint.getRSSI())
+                            );
+                        } catch (IOException exception) {
+                            LOGGER.log(Level.WARNING, "Unable to process provisioning network selection | error=" + exception);
+
+                            setProvisioningHtmlResponse(
+                                    response,
+                                    WifiPortalView.buildErrorPage("Terjadi kesalahan", "Perangkat tidak dapat membaca jaringan yang dipilih.")
+                            );
+                        }
                     }
                 }
         );
@@ -349,18 +472,24 @@ public final class WifiProvisioningService {
                 new RequestHandler() {
                     @Override
                     public void process(HttpRequest request, HttpResponse response) {
-                        LOGGER.log(Level.INFO, "Provisioning HTTP request received" + " | method=POST" + " | path=/connect");
                         try {
                             Map<String, String> parameters = request.parseBody(new ParameterParser());
+
                             String ssid = parameters.get("ssid");
                             String password = parameters.get("password");
+
                             if (ssid == null || ssid.length() == 0) {
-                                LOGGER.log(Level.WARNING, "Provisioning form rejected" + " | reason=SSID is empty");
-                                setProvisioningHtmlResponse(response, buildProvisioningMessagePage(
-                                        "Data belum lengkap",
-                                                "Pilih salah satu jaringan Wi-Fi.",
-                                                false
-                                        )
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        WifiPortalView.buildErrorPage("Jaringan tidak valid", "SSID Wi-Fi tidak boleh kosong.")
+                                );
+                                return;
+                            }
+
+                            if (findAccessPointBySsid(accessPoints, ssid) == null) {
+                                setProvisioningHtmlResponse(
+                                        response,
+                                        WifiPortalView.buildErrorPage("Jaringan tidak valid", "Jaringan yang dipilih tidak terdapat pada hasil scan.")
                                 );
                                 return;
                             }
@@ -369,410 +498,136 @@ public final class WifiProvisioningService {
                                 password = "";
                             }
 
-                            if (!isProvisioningSsidAllowed(accessPoints, ssid)) {
-                                LOGGER.log(Level.WARNING, "Provisioning form rejected" + " | reason=SSID is not in scan result" + " | SSID=" + ssid);
+                            if (!isPasswordValid(password)) {
                                 setProvisioningHtmlResponse(
                                         response,
-                                        buildProvisioningMessagePage(
-                                                "Jaringan tidak valid",
-                                                "Jaringan yang dipilih tidak terdapat "
-                                                        + "dalam hasil pemindaian perangkat.",
-                                                false
-                                        )
+                                        WifiPortalView.buildErrorPage("Password tidak valid", "Password harus kosong untuk jaringan terbuka atau terdiri dari 8 sampai 64 karakter.")
                                 );
-
                                 return;
                             }
 
-                            if (password.length() < 8 || password.length() > 64) {
-                                LOGGER.log(
-                                        Level.WARNING,
-                                        "Provisioning form rejected"
-                                                + " | reason=Invalid password length"
-                                                + " | SSID="
-                                                + ssid
-                                                + " | passwordLength="
-                                                + password.length()
-                                );
-
-                                setProvisioningHtmlResponse(
-                                        response,
-                                        buildProvisioningMessagePage(
-                                                "Password tidak valid",
-                                                "Password Wi-Fi harus terdiri dari "
-                                                        + "8 sampai 64 karakter.",
-                                                false
-                                        )
-                                );
-
+                            if (WifiProvisioningService.this.provisioningCredentialsSubmitted) {
+                                setProvisioningHtmlResponse(response, WifiPortalView.buildConnectingPage(ssid));
                                 return;
                             }
 
-                            if (WifiProvisioningService.this
-                                    .provisioningCredentialsSubmitted) {
-
-                                LOGGER.log(
-                                        Level.INFO,
-                                        "Provisioning connection already queued"
-                                );
-
-                                setProvisioningHtmlResponse(
-                                        response,
-                                        buildProvisioningMessagePage(
-                                                "Koneksi sedang diproses",
-                                                "Perangkat sedang mencoba terhubung "
-                                                        + "ke jaringan yang telah dipilih.",
-                                                true
-                                        )
-                                );
-
-                                return;
-                            }
-
-                            LOGGER.log(
-                                    Level.INFO,
-                                    "Provisioning credentials received"
-                                            + " | SSID="
-                                            + ssid
-                                            + " | passwordLength="
-                                            + password.length()
-                            );
-
-                            setProvisioningHtmlResponse(
-                                    response,
-                                    buildProvisioningMessagePage(
-                                            "Menghubungkan perangkat",
-                                            "Data Wi-Fi berhasil diterima. "
-                                                    + "Perangkat akan menutup hotspot "
-                                                    + "dan mencoba terhubung ke "
-                                                    + ssid
-                                                    + ". Koneksi HP ke halaman ini "
-                                                    + "akan terputus.",
-                                            true
-                                    )
-                            );
+                            setProvisioningHtmlResponse(response, WifiPortalView.buildConnectingPage(ssid));
 
                             WifiProvisioningService.this.submittedProvisioningSsid = ssid;
                             WifiProvisioningService.this.submittedProvisioningPassword = password;
                             WifiProvisioningService.this.provisioningCredentialsSubmitted = true;
+
                             LOGGER.log(
                                     Level.INFO,
-                                    "Provisioning credentials queued"
-                                            + " | SSID="
-                                            + ssid
-                                            + " | passwordLength="
-                                            + password.length()
+                                    "Provisioning credentials queued | SSID=" + ssid
+                                            + " | passwordLength=" + password.length()
                             );
                         } catch (IOException exception) {
-                            LOGGER.log(Level.SEVERE, "Failed to parse provisioning form", exception);
+                            LOGGER.log(Level.WARNING, "Unable to process provisioning credentials | error=" + exception);
+
                             setProvisioningHtmlResponse(
                                     response,
-                                    buildProvisioningMessagePage(
-                                            "Terjadi kesalahan",
-                                            "Perangkat tidak dapat membaca "
-                                                    + "data formulir.",
-                                            false
-                                    )
+                                    WifiPortalView.buildErrorPage("Terjadi kesalahan", "Perangkat tidak dapat membaca credential Wi-Fi.")
                             );
                         }
                     }
                 }
         );
 
-        LOGGER.log(
-                Level.INFO,
-                "HOKA provisioning server configured"
-                        + " | port=80"
-                        + " | started=false"
-                        + " | routes=GET /, POST /connect"
-        );
-
         return server;
     }
 
-    private String buildProvisioningPage(AccessPoint[] accessPoints) {
-        int networkCount = countProvisioningAccessPoints(accessPoints);
-        StringBuilder html = new StringBuilder(6144);
-        html.append("<!DOCTYPE html>");
-        html.append("<html lang='id'>");
-        html.append("<head>");
-        html.append("<meta charset='UTF-8'>");
-        html.append("<meta name='viewport' " + "content='width=device-width, initial-scale=1.0'>");
-        html.append("<title>Smart Greenhouse Wi-Fi</title>");
-        html.append("<style>");
-        html.append(
-                "body{"
-                        + "margin:0;"
-                        + "padding:20px;"
-                        + "font-family:Arial,sans-serif;"
-                        + "background:#f3f6f4;"
-                        + "color:#1f2933;"
-                        + "}"
-        );
-        html.append(
-                ".container{"
-                        + "max-width:520px;"
-                        + "margin:0 auto;"
-                        + "background:#ffffff;"
-                        + "padding:24px;"
-                        + "border-radius:16px;"
-                        + "box-shadow:0 4px 16px rgba(0,0,0,0.10);"
-                        + "}"
-        );
-        html.append(
-                "h1{"
-                        + "margin:0 0 8px 0;"
-                        + "font-size:24px;"
-                        + "color:#166534;"
-                        + "}"
-        );
-        html.append(
-                ".description{"
-                        + "margin:0 0 20px 0;"
-                        + "color:#52606d;"
-                        + "line-height:1.5;"
-                        + "}"
-        );
-        html.append(
-                ".network{"
-                        + "display:block;"
-                        + "margin-bottom:10px;"
-                        + "padding:14px;"
-                        + "border:1px solid #d9e2dc;"
-                        + "border-radius:10px;"
-                        + "background:#f9fbfa;"
-                        + "cursor:pointer;"
-                        + "}"
-        );
-        html.append(".network input{" + "margin-right:10px;" + "}");
-        html.append(
-                ".ssid{"
-                        + "font-weight:bold;"
-                        + "word-break:break-word;"
-                        + "}"
-        );
-        html.append(
-                ".rssi{"
-                        + "display:block;"
-                        + "margin-left:26px;"
-                        + "margin-top:5px;"
-                        + "font-size:13px;"
-                        + "color:#66788a;"
-                        + "}"
-        );
-        html.append(
-                ".field-label{"
-                        + "display:block;"
-                        + "margin-top:20px;"
-                        + "margin-bottom:8px;"
-                        + "font-weight:bold;"
-                        + "}"
-        );
-        html.append(
-                ".password{"
-                        + "width:100%;"
-                        + "box-sizing:border-box;"
-                        + "padding:13px;"
-                        + "border:1px solid #b8c4bc;"
-                        + "border-radius:9px;"
-                        + "font-size:16px;"
-                        + "}"
-        );
-        html.append(
-                ".button{"
-                        + "width:100%;"
-                        + "margin-top:20px;"
-                        + "padding:14px;"
-                        + "border:0;"
-                        + "border-radius:10px;"
-                        + "background:#166534;"
-                        + "color:#ffffff;"
-                        + "font-size:16px;"
-                        + "font-weight:bold;"
-                        + "cursor:pointer;"
-                        + "}"
-        );
-        html.append(
-                ".empty{"
-                        + "padding:16px;"
-                        + "border-radius:10px;"
-                        + "background:#fff4e5;"
-                        + "color:#92400e;"
-                        + "}"
-        );
-        html.append(
-                ".note{"
-                        + "margin-top:20px;"
-                        + "padding:12px;"
-                        + "border-radius:8px;"
-                        + "background:#e8f5e9;"
-                        + "font-size:13px;"
-                        + "line-height:1.5;"
-                        + "color:#245b2a;"
-                        + "}"
-        );
-        html.append("</style>");
-        html.append("</head>");
-        html.append("<body>");
-        html.append("<div class='container'>");
-        html.append("<h1>Smart Greenhouse</h1>");
-        html.append("<p class='description'>");
-        html.append("Pilih jaringan Wi-Fi dan masukkan password " + "yang akan digunakan oleh perangkat.");
-        html.append("<br>");
-        html.append("Jaringan ditemukan: ");
-        html.append(networkCount);
-        html.append("</p>");
+    private boolean waitForProvisioningCredentials(long timeoutMilliseconds) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMilliseconds;
 
-        if (networkCount == 0) {
-            html.append("<div class='empty'>");
-            html.append("Tidak ada jaringan Wi-Fi yang ditemukan.");
-            html.append("</div>");
-        } else {
-            html.append("<form method='post' action='/connect'>");
-            for (int index = 0; index < accessPoints.length; index++) {
-                AccessPoint accessPoint = accessPoints[index];
-                if (accessPoint == null) {
-                    continue;
-                }
+        while (!this.provisioningCredentialsSubmitted) {
+            long remaining = deadline - System.currentTimeMillis();
 
-                String ssid = escapeHtml(accessPoint.getSSID());
-                html.append("<label class='network'>");
-                html.append("<input type='radio' " + "name='ssid' " + "value='");
-                html.append(ssid);
-                html.append("'");
-
-                if (index == 0) {
-                    html.append(" checked");
-                }
-
-                html.append(">");
-                html.append("<span class='ssid'>");
-                html.append(ssid);
-                html.append("</span>");
-                html.append("<span class='rssi'>");
-                html.append("Kekuatan sinyal: ");
-                html.append(accessPoint.getRSSI());
-                html.append("</span>");
-                html.append("</label>");
+            if (remaining <= 0L) {
+                return false;
             }
-            html.append(
-                    "<label class='field-label' "
-                            + "for='password'>"
-                            + "Password Wi-Fi"
-                            + "</label>"
-            );
-            html.append(
-                    "<input class='password' "
-                            + "id='password' "
-                            + "name='password' "
-                            + "type='password' "
-                            + "minlength='8' "
-                            + "maxlength='64' "
-                            + "required "
-                            + "placeholder='Masukkan password Wi-Fi'>"
-            );
-            html.append("<button class='button' type='submit'>" + "Hubungkan" + "</button>");
-            html.append("</form>");
+
+            long sleepDuration = remaining < PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS
+                    ? remaining
+                    : PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS;
+
+            Thread.sleep(sleepDuration);
         }
 
-        html.append("<div class='note'>");
-        html.append("Tahap pengujian: perangkat hanya menerima " + "SSID dan password. Perangkat belum " + "berpindah ke jaringan yang dipilih.");
-        html.append("</div>");
-        html.append("</div>");
-        html.append("</body>");
-        html.append("</html>");
-
-        return html.toString();
+        return true;
     }
 
-    private String buildProvisioningMessagePage(String title, String message, boolean success) {
-        String background = success ? "#e8f5e9" : "#fff4e5";
-        String textColor = success ? "#166534" : "#92400e";
-        StringBuilder html = new StringBuilder(2048);
-        html.append("<!DOCTYPE html>");
-        html.append("<html lang='id'>");
-        html.append("<head>");
-        html.append("<meta charset='UTF-8'>");
-        html.append("<meta name='viewport' " + "content='width=device-width, initial-scale=1.0'>");
-        html.append("<title>");
-        html.append(escapeHtml(title));
-        html.append("</title>");
-        html.append("<style>");
-        html.append(
-                "body{"
-                        + "margin:0;"
-                        + "padding:20px;"
-                        + "font-family:Arial,sans-serif;"
-                        + "background:#f3f6f4;"
-                        + "color:#1f2933;"
-                        + "}"
-        );
-        html.append(
-                ".container{"
-                        + "max-width:520px;"
-                        + "margin:0 auto;"
-                        + "background:#ffffff;"
-                        + "padding:24px;"
-                        + "border-radius:16px;"
-                        + "box-shadow:0 4px 16px rgba(0,0,0,0.10);"
-                        + "}"
-        );
-        html.append(
-                ".message{"
-                        + "padding:18px;"
-                        + "border-radius:10px;"
-                        + "background:"
-        );
-        html.append(background);
-        html.append(";color:");
-        html.append(textColor);
-        html.append(";line-height:1.5;" + "}");
-        html.append(
-                ".back{"
-                        + "display:inline-block;"
-                        + "margin-top:20px;"
-                        + "padding:12px 18px;"
-                        + "border-radius:9px;"
-                        + "background:#166534;"
-                        + "color:#ffffff;"
-                        + "text-decoration:none;"
-                        + "font-weight:bold;"
-                        + "}"
-        );
-        html.append("</style>");
-        html.append("</head>");
-        html.append("<body>");
-        html.append("<div class='container'>");
-        html.append("<h1>");
-        html.append(escapeHtml(title));
-        html.append("</h1>");
-        html.append("<div class='message'>");
-        html.append(escapeHtml(message));
-        html.append("</div>");
-        html.append("<a class='back' href='/'>" + "Kembali" + "</a>");
-        html.append("</div>");
-        html.append("</body>");
-        html.append("</html>");
+    private void stopProvisioningHttpServer() {
+        HttpServer server = this.provisioningHttpServer;
 
-        return html.toString();
+        if (server == null) {
+            return;
+        }
+
+        try {
+            LOGGER.log(Level.INFO, "Stopping HOKA provisioning server");
+            server.stop();
+            LOGGER.log(Level.INFO, "HOKA provisioning server stopped");
+        } catch (Exception exception) {
+            LOGGER.log(Level.WARNING, "Unable to stop HOKA provisioning server | error=" + exception);
+        } finally {
+            this.provisioningHttpServer = null;
+        }
+    }
+
+    private void finishProvisioningFailure(String message) {
+        synchronized (this.stateLock) {
+            this.provisioningRunning = false;
+        }
+
+        setState(WifiProvisioningState.FAILED);
+        notifyConnectionStatus(false);
+        notifyFailed(message);
+
+        LOGGER.log(Level.WARNING, "WiFi provisioning finished with failure | reason=" + message);
+    }
+
+    private void clearSubmittedProvisioningCredentials() {
+        this.provisioningCredentialsSubmitted = false;
+        this.submittedProvisioningSsid = null;
+        this.submittedProvisioningPassword = null;
     }
 
     private void setProvisioningHtmlResponse(HttpResponse response, String page) {
         response.addHeader("content-type", "text/html; charset=UTF-8");
         response.addHeader("cache-control", "no-store");
+
         try {
             response.setData(page, "UTF-8");
         } catch (UnsupportedEncodingException exception) {
-            LOGGER.log(Level.WARNING, "UTF-8 encoding is unavailable" + " | using default encoding", exception);
+            LOGGER.log(Level.WARNING, "UTF-8 encoding unavailable | using default encoding | error=" + exception);
             response.setData(page);
         }
     }
 
-    private int countProvisioningAccessPoints(AccessPoint[] accessPoints) {
+    private static AccessPoint findAccessPointBySsid(AccessPoint[] accessPoints, String ssid) {
+        if (accessPoints == null || ssid == null) {
+            return null;
+        }
+
+        for (int index = 0; index < accessPoints.length; index++) {
+            AccessPoint accessPoint = accessPoints[index];
+
+            if (accessPoint != null && ssid.equals(accessPoint.getSSID())) {
+                return accessPoint;
+            }
+        }
+
+        return null;
+    }
+
+    private static int countAccessPoints(AccessPoint[] accessPoints) {
         if (accessPoints == null) {
             return 0;
         }
+
         int count = 0;
+
         for (int index = 0; index < accessPoints.length; index++) {
             if (accessPoints[index] != null) {
                 count++;
@@ -782,179 +637,61 @@ public final class WifiProvisioningService {
         return count;
     }
 
-    private String escapeHtml(String value) {
-        if (value == null) {
-            return "";
+    private static boolean isPasswordValid(String password) {
+        if (password == null || password.length() == 0) {
+            return true;
         }
 
-        StringBuilder escaped = new StringBuilder(value.length() + 16);
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            switch (character) {
-                case '&':
-                    escaped.append("&amp;");
-                    break;
-                case '<':
-                    escaped.append("&lt;");
-                    break;
-                case '>':
-                    escaped.append("&gt;");
-                    break;
-                case '"':
-                    escaped.append("&quot;");
-                    break;
-                case '\'':
-                    escaped.append("&#39;");
-                    break;
-                default:
-                    escaped.append(character);
-                    break;
-            }
-        }
-
-        return escaped.toString();
+        return password.length() >= 8 && password.length() <= 64;
     }
 
-    private static boolean isProvisioningSsidAllowed(AccessPoint[] accessPoints, String ssid) {
-        if (accessPoints == null || ssid == null || ssid.length() == 0) {
-            return false;
-        }
-
-        for (int index = 0; index < accessPoints.length; index++) {
-            AccessPoint accessPoint = accessPoints[index];
-            if (accessPoint == null) {
-                continue;
-            }
-
-            if (ssid.equals(accessPoint.getSSID())) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private boolean waitForProvisioningCredentials(long timeoutMilliseconds) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMilliseconds;
-        while (!this.provisioningCredentialsSubmitted) {
-            long remaining = deadline - System.currentTimeMillis();
-            if (remaining <= 0L) {
-                return false;
-            }
-            long sleepDuration = remaining < PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS ? remaining : PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS;
-            Thread.sleep(sleepDuration);
-        }
-
-        return true;
-    }
-
-    private void clearSubmittedProvisioningCredentials() {
-        this.provisioningCredentialsSubmitted = false;
-        this.submittedProvisioningSsid = null;
-        this.submittedProvisioningPassword = null;
-    }
-
-    private static void logProvisioningNetworks(AccessPoint[] accessPoints) {
-        if (accessPoints == null || accessPoints.length == 0) {
-            LOGGER.log(Level.WARNING, "No provisioning WiFi network found");
-            return;
-        }
-
-        LOGGER.log(Level.INFO, "Provisioning networks selected" + " | count=" + accessPoints.length);
-        for (int index = 0; index < accessPoints.length; index++) {
-            AccessPoint accessPoint = accessPoints[index];
-            LOGGER.log(
-                    Level.INFO,
-                    "Provisioning network"
-                            + " | index="
-                            + index
-                            + " | SSID="
-                            + accessPoint.getSSID()
-                            + " | RSSI="
-                            + accessPoint.getRSSI()
-            );
+    private void notifyConnectionStatus(boolean connected) {
+        try {
+            this.listener.onWifiConnectionStatusChanged(connected);
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.WARNING, "WiFi connection listener failed | error=" + exception);
         }
     }
 
-    public void connectConfiguredWifi() {
-        if (this.wifiConnectionRunning) {
-            return;
+    private void notifyProvisioningReady(String ssid, String password, String portalUrl, int networkCount) {
+        try {
+            this.listener.onProvisioningReady(ssid, password, portalUrl, networkCount);
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.WARNING, "WiFi provisioning ready listener failed | error=" + exception);
         }
+    }
 
-        this.wifiConnectionRunning = true;
-        LOGGER.log(Level.INFO, "Automatic WiFi connection started" + " | SSID: " + this.wifiService.getConfiguredSsid());
-        Thread worker =
-                new Thread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                boolean connected;
-                                String errorMessage;
-                                try {
-                                    WifiCapability capability = WifiProvisioningService.this.wifiService.getCapability();
-                                    LOGGER.log(Level.INFO, "WiFi capability: " + capability);
-                                    connected = WifiProvisioningService.this.wifiService.connectConfiguredNetwork();
-                                    if (connected) {
-                                        LOGGER.log(Level.INFO, "WiFi connected" + " | waiting for network before NTP");
-                                        Thread.sleep(NETWORK_READY_DELAY_MS);
-                                        boolean timeSynchronized = WifiProvisioningService.this.timeService.synchronizeTime();
-                                        if (!timeSynchronized) {
-                                            LOGGER.log(Level.WARNING, "WiFi connected but header time" + " was not synchronized.");
-                                        }
-                                    }
-                                    errorMessage = connected ? null : "Configured network" + " was not joined.";
-                                } catch (Exception exception) {
-                                    connected = false;
-                                    errorMessage = exception.toString();
-                                }
+    private void notifyConnecting(String ssid) {
+        try {
+            this.listener.onConnecting(ssid);
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.WARNING, "WiFi connecting listener failed | error=" + exception);
+        }
+    }
 
-                                final boolean connectionResult = connected;
-                                final String connectionError = errorMessage;
-                                MicroUI.callSerially(
-                                        new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                WifiProvisioningService.this.wifiConnectionRunning = false;
-                                                WifiProvisioningService.this.notifyConnectionStatus(connectionResult);
-                                                if (connectionResult) {
-                                                    Runnable task = WifiProvisioningService.this.wifiConnectedTask;
-                                                    if (task != null) {
-                                                        try {
-                                                            task.run();
-                                                        } catch (RuntimeException exception) {
-                                                            LOGGER.log(Level.WARNING, "WiFi connected task failed" + " | error=" + exception);
-                                                        }
-                                                    }
-                                                    LOGGER.log(
-                                                            Level.INFO,
-                                                            "Automatic WiFi"
-                                                                    + " connection successful"
-                                                                    + " | SSID: "
-                                                                    + WifiProvisioningService.this
-                                                                    .wifiService
-                                                                    .getConfiguredSsid()
-                                                    );
-                                                } else {
-                                                    LOGGER.log(
-                                                            Level.WARNING,
-                                                            "Automatic WiFi"
-                                                                    + " connection failed"
-                                                                    + " | SSID: "
-                                                                    + WifiProvisioningService.this
-                                                                    .wifiService
-                                                                    .getConfiguredSsid()
-                                                                    + " | reason: "
-                                                                    + connectionError
-                                                    );
-                                                }
-                                            }
-                                        }
-                                );
-                            }
-                        },
-                        "wifi-auto-connect"
-                );
+    private void notifyConnected(String ssid) {
+        try {
+            this.listener.onConnected(ssid);
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.WARNING, "WiFi connected listener failed | error=" + exception);
+        }
+    }
 
-        worker.start();
+    private void notifyFailed(String message) {
+        try {
+            this.listener.onFailed(message);
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.WARNING, "WiFi failure listener failed | error=" + exception);
+        }
+    }
+
+    private void setState(int newState) {
+        this.state = newState;
+
+        try {
+            this.listener.onStateChanged(newState);
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.WARNING, "WiFi state listener failed | error=" + exception);
+        }
     }
 }
