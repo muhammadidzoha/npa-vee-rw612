@@ -22,6 +22,8 @@ import ej.hoka.http.requesthandler.RequestHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import java.io.UnsupportedEncodingException;
+
 public class HeaderController {
 
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: HEADER CONTROLLER]");
@@ -135,7 +137,7 @@ public class HeaderController {
             AccessPoint[] accessPoints = this.wifiService.scanProvisioningNetworks();
             logProvisioningNetworks(accessPoints);
             this.wifiService.startProvisioningAccessPoint();
-            this.provisioningHttpServer = createProvisioningHttpServer();
+            this.provisioningHttpServer = createProvisioningHttpServer(accessPoints);
             LOGGER.log(Level.INFO, "Starting HOKA provisioning server" + " | port=80");
             this.provisioningHttpServer.start();
             LOGGER.log(Level.INFO, "HOKA provisioning server started" + " | port=80");
@@ -245,17 +247,33 @@ public class HeaderController {
         );
     }
 
-    private HttpServer createProvisioningHttpServer() {
-        LOGGER.log(Level.INFO, "Creating HOKA provisioning server configuration");
-        HttpServer server = HttpServer.builder().port(80).simultaneousConnections(1).workerCount(1).connectionTimeout(5000).build();
+    private HttpServer createProvisioningHttpServer(final AccessPoint[] accessPoints) {
+        final int networkCount = countProvisioningAccessPoints(accessPoints);
+        LOGGER.log(Level.INFO, "Creating HOKA provisioning server configuration" + " | networkCount=" + networkCount);
+        HttpServer server =
+                HttpServer.builder()
+                        .port(80)
+                        .simultaneousConnections(1)
+                        .workerCount(1)
+                        .connectionTimeout(5000)
+                        .build();
+
         server.get(
                 "/",
                 new RequestHandler() {
                     @Override
                     public void process(HttpRequest request, HttpResponse response) {
                         LOGGER.log(Level.INFO, "Provisioning HTTP request received" + " | method=GET" + " | path=/");
-                        response.setData("Smart Greenhouse HOKA server ready");
-                        LOGGER.log(Level.INFO, "Provisioning HTTP response prepared" + " | status=200");
+                        String page = buildProvisioningPage(accessPoints);
+                        response.addHeader("content-type", "text/html; charset=UTF-8");
+                        response.addHeader("cache-control", "no-store");
+                        try {
+                            response.setData(page, "UTF-8");
+                        } catch (UnsupportedEncodingException exception) {
+                            LOGGER.log(Level.WARNING, "UTF-8 encoding is unavailable" + " | using default encoding", exception);
+                            response.setData(page);
+                        }
+                        LOGGER.log(Level.INFO, "Provisioning HTTP response prepared" + " | status=200" + " | networkCount=" + networkCount);
                     }
                 }
         );
@@ -264,7 +282,191 @@ public class HeaderController {
         return server;
     }
 
+    private String buildProvisioningPage(AccessPoint[] accessPoints) {
+        int networkCount = countProvisioningAccessPoints(accessPoints);
+        StringBuilder html = new StringBuilder(4096);
+        html.append("<!DOCTYPE html>");
+        html.append("<html lang='id'>");
+        html.append("<head>");
+        html.append("<meta charset='UTF-8'>");
+        html.append("<meta name='viewport' " + "content='width=device-width, initial-scale=1.0'>");
+        html.append("<title>Smart Greenhouse Wi-Fi</title>");
+        html.append("<style>");
+        html.append(
+                "body{"
+                        + "margin:0;"
+                        + "padding:20px;"
+                        + "font-family:Arial,sans-serif;"
+                        + "background:#f3f6f4;"
+                        + "color:#1f2933;"
+                        + "}"
+        );
+        html.append(
+                ".container{"
+                        + "max-width:520px;"
+                        + "margin:0 auto;"
+                        + "background:#ffffff;"
+                        + "padding:24px;"
+                        + "border-radius:16px;"
+                        + "box-shadow:0 4px 16px "
+                        + "rgba(0,0,0,0.10);"
+                        + "}"
+        );
+        html.append(
+                "h1{"
+                        + "margin:0 0 8px 0;"
+                        + "font-size:24px;"
+                        + "color:#166534;"
+                        + "}"
+        );
+        html.append(
+                ".description{"
+                        + "margin:0 0 20px 0;"
+                        + "color:#52606d;"
+                        + "line-height:1.5;"
+                        + "}"
+        );
+        html.append(
+                ".network{"
+                        + "display:block;"
+                        + "margin-bottom:10px;"
+                        + "padding:14px;"
+                        + "border:1px solid #d9e2dc;"
+                        + "border-radius:10px;"
+                        + "background:#f9fbfa;"
+                        + "}"
+        );
+        html.append(".network input{" + "margin-right:10px;" + "}");
+        html.append(".ssid{" + "font-weight:bold;" + "word-break:break-word;" + "}");
+        html.append(
+                ".rssi{"
+                        + "display:block;"
+                        + "margin-left:26px;"
+                        + "margin-top:5px;"
+                        + "font-size:13px;"
+                        + "color:#66788a;"
+                        + "}"
+        );
+        html.append(
+                ".empty{"
+                        + "padding:16px;"
+                        + "border-radius:10px;"
+                        + "background:#fff4e5;"
+                        + "color:#92400e;"
+                        + "}"
+        );
+        html.append(
+                ".note{"
+                        + "margin-top:20px;"
+                        + "padding:12px;"
+                        + "border-radius:8px;"
+                        + "background:#e8f5e9;"
+                        + "font-size:13px;"
+                        + "line-height:1.5;"
+                        + "color:#245b2a;"
+                        + "}"
+        );
+        html.append("</style>");
+        html.append("</head>");
+        html.append("<body>");
+        html.append("<div class='container'>");
+        html.append("<h1>Smart Greenhouse</h1>");
+        html.append("<p class='description'>");
+        html.append("Pilih jaringan Wi-Fi yang akan " + "digunakan oleh perangkat.");
+        html.append("<br>");
+        html.append("Jaringan ditemukan: ");
+        html.append(networkCount);
+        html.append("</p>");
 
+        if (networkCount == 0) {
+            html.append("<div class='empty'>");
+            html.append("Tidak ada jaringan Wi-Fi " + "yang ditemukan.");
+            html.append("</div>");
+        } else {
+            for (int index = 0; index < accessPoints.length; index++) {
+                AccessPoint accessPoint = accessPoints[index];
+                if (accessPoint == null) {
+                    continue;
+                }
+                String ssid = escapeHtml(accessPoint.getSSID());
+                html.append("<label class='network'>");
+                html.append("<input type='radio' " + "name='ssid' " + "value='");
+                html.append(ssid);
+                html.append("'>");
+                html.append("<span class='ssid'>");
+                html.append(ssid);
+                html.append("</span>");
+                html.append("<span class='rssi'>");
+                html.append("Kekuatan sinyal: ");
+                html.append(accessPoint.getRSSI());
+                html.append("</span>");
+                html.append("</label>");
+            }
+        }
+
+        html.append("<div class='note'>");
+        html.append(
+                "Pada tahap ini halaman baru menampilkan "
+                        + "daftar jaringan hasil scan. "
+                        + "Password dan tombol koneksi akan "
+                        + "ditambahkan pada tahap berikutnya."
+        );
+
+        html.append("</div>");
+        html.append("</div>");
+        html.append("</body>");
+        html.append("</html>");
+
+        return html.toString();
+    }
+
+    private int countProvisioningAccessPoints(AccessPoint[] accessPoints) {
+        if (accessPoints == null) {
+            return 0;
+        }
+
+        int count = 0;
+        for (int index = 0; index < accessPoints.length; index++) {
+            if (accessPoints[index] != null) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        StringBuilder escaped = new StringBuilder(value.length() + 16);
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            switch (character) {
+                case '&':
+                    escaped.append("&amp;");
+                    break;
+                case '<':
+                    escaped.append("&lt;");
+                    break;
+                case '>':
+                    escaped.append("&gt;");
+                    break;
+                case '"':
+                    escaped.append("&quot;");
+                    break;
+                case '\'':
+                    escaped.append("&#39;");
+                    break;
+                default:
+                    escaped.append(character);
+                    break;
+            }
+        }
+
+        return escaped.toString();
+    }
 
     private static void logProvisioningNetworks(AccessPoint[] accessPoints) {
         if (accessPoints == null || accessPoints.length == 0) {
