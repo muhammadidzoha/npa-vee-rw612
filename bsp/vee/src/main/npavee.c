@@ -104,7 +104,27 @@ int main(void)
     }
     else
     {
+        ds3231_datetime_t rtcDateTime;
+
         PRINTF("[RTC] DS3231 hardware test PASSED.\r\n");
+
+        if (DS3231_IsTimeValid())
+        {
+            PRINTF("[RTC] RTC time status = VALID\r\n");
+        }
+        else
+        {
+            PRINTF("[RTC] RTC time status = INVALID\r\n");
+        }
+
+        if (DS3231_ReadDateTime(&rtcDateTime))
+        {
+            DS3231_PrintDateTime(&rtcDateTime);
+        }
+        else
+        {
+            PRINTF("[RTC] ERROR: Unable to read complete date/time.\r\n");
+        }
     }
 
     GPIO_PortInit(GPIO, 0);
