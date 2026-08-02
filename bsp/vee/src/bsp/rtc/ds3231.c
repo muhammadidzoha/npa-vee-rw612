@@ -20,9 +20,18 @@
 #define DS3231_REGISTER_MONTH 0x05U
 #define DS3231_REGISTER_YEAR 0x06U
 
+#define DS3231_REGISTER_STATUS 0x0FU
+
+#define DS3231_STATUS_OSF_MASK 0x80U
+
 static uint8_t DS3231_BcdToDecimal(uint8_t value)
 {
     return (uint8_t)(((value >> 4U) * 10U) + (value & 0x0FU));
+}
+
+static uint8_t DS3231_DecimalToBcd(uint8_t value)
+{
+    return (uint8_t)(((value / 10U) << 4U) | (value % 10U));
 }
 
 static bool DS3231_ReadRegister(uint8_t registerAddress, uint8_t *value)
@@ -45,7 +54,10 @@ static bool DS3231_ReadRegister(uint8_t registerAddress, uint8_t *value)
     transfer.dataSize = 1U;
     transfer.flags = kI2C_TransferDefaultFlag;
 
-    status = I2C_MasterTransferBlocking(DS3231_I2C_BASE, &transfer);
+    status = I2C_MasterTransferBlocking(
+        DS3231_I2C_BASE,
+        &transfer
+    );
 
     if (status != kStatus_Success)
     {
@@ -55,6 +67,86 @@ static bool DS3231_ReadRegister(uint8_t registerAddress, uint8_t *value)
             (int)status
         );
 
+        return false;
+    }
+
+    return true;
+}
+
+static bool DS3231_WriteRegister(uint8_t registerAddress, uint8_t value)
+{
+    i2c_master_transfer_t transfer;
+    status_t status;
+    uint8_t writeValue = value;
+
+    memset(&transfer, 0, sizeof(transfer));
+
+    transfer.slaveAddress = DS3231_I2C_ADDRESS;
+    transfer.direction = kI2C_Write;
+    transfer.subaddress = registerAddress;
+    transfer.subaddressSize = 1U;
+    transfer.data = &writeValue;
+    transfer.dataSize = 1U;
+    transfer.flags = kI2C_TransferDefaultFlag;
+
+    status = I2C_MasterTransferBlocking(
+        DS3231_I2C_BASE,
+        &transfer
+    );
+
+    if (status != kStatus_Success)
+    {
+        PRINTF(
+            "[RTC] I2C write failed | register=0x%02X | status=%d\r\n",
+            registerAddress,
+            (int)status
+        );
+
+        return false;
+    }
+
+    return true;
+}
+
+static bool DS3231_IsDateTimeRangeValid(const ds3231_datetime_t *dateTime)
+{
+    if (dateTime == NULL)
+    {
+        return false;
+    }
+
+    if (dateTime->year < 2000U || dateTime->year > 2099U)
+    {
+        return false;
+    }
+
+    if (dateTime->month < 1U || dateTime->month > 12U)
+    {
+        return false;
+    }
+
+    if (dateTime->date < 1U || dateTime->date > 31U)
+    {
+        return false;
+    }
+
+    if (dateTime->day < 1U || dateTime->day > 7U)
+    {
+        return false;
+    }
+
+    if (dateTime->hour > 23U)
+    {
+        return false;
+    }
+
+    if (dateTime->minute > 59U)
+    {
+        return false;
+    }
+
+    if (dateTime->second > 59U)
+    {
         return false;
     }
 
@@ -92,9 +184,14 @@ bool DS3231_TestCommunication(void)
 
     PRINTF("[RTC] Probing DS3231 at address 0x68...\r\n");
 
-    if (!DS3231_ReadRegister(DS3231_REGISTER_SECONDS, &secondsRaw))
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_SECONDS,
+            &secondsRaw))
     {
-        PRINTF("[RTC] ERROR: DS3231 not detected.\r\n");
+        PRINTF(
+            "[RTC] ERROR: DS3231 not detected.\r\n"
+        );
+
         return false;
     }
 
@@ -112,7 +209,9 @@ bool DS3231_TestCommunication(void)
         return false;
     }
 
-    PRINTF("[RTC] DS3231 detected successfully.\r\n");
+    PRINTF(
+        "[RTC] DS3231 detected successfully.\r\n"
+    );
 
     PRINTF(
         "[RTC] Seconds register | raw=0x%02X | decoded=%u\r\n",
@@ -138,169 +237,367 @@ bool DS3231_ReadDateTime(ds3231_datetime_t *dateTime)
         return false;
     }
 
-    /*
-     * Penting:
-     *
-     * Setiap register dibaca menggunakan transaksi I2C terpisah
-     * dengan dataSize = 1.
-     *
-     * Ini mengikuti pola yang sudah terbukti stabil pada board.
-     */
-
     PRINTF("[RTC] Reading seconds register 0x00...\r\n");
 
-    if (!DS3231_ReadRegister(DS3231_REGISTER_SECONDS, &secondsRaw))
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_SECONDS,
+            &secondsRaw))
     {
         return false;
     }
-
-    PRINTF(
-        "[RTC] Seconds | raw=0x%02X | decoded=%u\r\n",
-        secondsRaw,
-        DS3231_BcdToDecimal(secondsRaw & 0x7FU)
-    );
 
     PRINTF("[RTC] Reading minutes register 0x01...\r\n");
 
-    if (!DS3231_ReadRegister(DS3231_REGISTER_MINUTES, &minutesRaw))
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_MINUTES,
+            &minutesRaw))
     {
         return false;
     }
-
-    PRINTF(
-        "[RTC] Minutes | raw=0x%02X | decoded=%u\r\n",
-        minutesRaw,
-        DS3231_BcdToDecimal(minutesRaw & 0x7FU)
-    );
 
     PRINTF("[RTC] Reading hours register 0x02...\r\n");
 
-    if (!DS3231_ReadRegister(DS3231_REGISTER_HOURS, &hoursRaw))
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_HOURS,
+            &hoursRaw))
     {
         return false;
     }
-
-    PRINTF(
-        "[RTC] Hours | raw=0x%02X\r\n",
-        hoursRaw
-    );
 
     PRINTF("[RTC] Reading day register 0x03...\r\n");
 
-    if (!DS3231_ReadRegister(DS3231_REGISTER_DAY, &dayRaw))
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_DAY,
+            &dayRaw))
     {
         return false;
     }
-
-    PRINTF(
-        "[RTC] Day | raw=0x%02X | decoded=%u\r\n",
-        dayRaw,
-        DS3231_BcdToDecimal(dayRaw & 0x07U)
-    );
 
     PRINTF("[RTC] Reading date register 0x04...\r\n");
 
-    if (!DS3231_ReadRegister(DS3231_REGISTER_DATE, &dateRaw))
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_DATE,
+            &dateRaw))
     {
         return false;
     }
-
-    PRINTF(
-        "[RTC] Date | raw=0x%02X | decoded=%u\r\n",
-        dateRaw,
-        DS3231_BcdToDecimal(dateRaw & 0x3FU)
-    );
 
     PRINTF("[RTC] Reading month register 0x05...\r\n");
 
-    if (!DS3231_ReadRegister(DS3231_REGISTER_MONTH, &monthRaw))
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_MONTH,
+            &monthRaw))
     {
         return false;
     }
-
-    PRINTF(
-        "[RTC] Month | raw=0x%02X | decoded=%u\r\n",
-        monthRaw,
-        DS3231_BcdToDecimal(monthRaw & 0x1FU)
-    );
 
     PRINTF("[RTC] Reading year register 0x06...\r\n");
 
-    if (!DS3231_ReadRegister(DS3231_REGISTER_YEAR, &yearRaw))
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_YEAR,
+            &yearRaw))
     {
         return false;
     }
 
-    PRINTF(
-        "[RTC] Year | raw=0x%02X | decoded=%u\r\n",
-        yearRaw,
-        DS3231_BcdToDecimal(yearRaw)
-    );
+    dateTime->second =
+        DS3231_BcdToDecimal(
+            secondsRaw & 0x7FU
+        );
 
-    /*
-     * Seconds.
-     */
-    dateTime->second = DS3231_BcdToDecimal(secondsRaw & 0x7FU);
+    dateTime->minute =
+        DS3231_BcdToDecimal(
+            minutesRaw & 0x7FU
+        );
 
-    /*
-     * Minutes.
-     */
-    dateTime->minute = DS3231_BcdToDecimal(minutesRaw & 0x7FU);
-
-    /*
-     * Hours.
-     *
-     * Bit 6:
-     * 0 = mode 24 jam
-     * 1 = mode 12 jam
-     */
     if ((hoursRaw & 0x40U) != 0U)
     {
-        uint8_t hour12 = DS3231_BcdToDecimal(hoursRaw & 0x1FU);
-        bool isPm = (hoursRaw & 0x20U) != 0U;
+        uint8_t hour12 =
+            DS3231_BcdToDecimal(
+                hoursRaw & 0x1FU
+            );
+
+        bool isPm =
+            (hoursRaw & 0x20U) != 0U;
 
         if (hour12 == 12U)
         {
-            dateTime->hour = isPm ? 12U : 0U;
+            dateTime->hour =
+                isPm ? 12U : 0U;
         }
         else
         {
-            dateTime->hour = isPm ? (uint8_t)(hour12 + 12U) : hour12;
+            dateTime->hour =
+                isPm
+                    ? (uint8_t)(hour12 + 12U)
+                    : hour12;
         }
     }
     else
     {
-        dateTime->hour = DS3231_BcdToDecimal(hoursRaw & 0x3FU);
+        dateTime->hour =
+            DS3231_BcdToDecimal(
+                hoursRaw & 0x3FU
+            );
     }
 
-    /*
-     * Day of week.
-     */
-    dateTime->day = DS3231_BcdToDecimal(dayRaw & 0x07U);
+    dateTime->day =
+        DS3231_BcdToDecimal(
+            dayRaw & 0x07U
+        );
 
-    /*
-     * Date.
-     */
-    dateTime->date = DS3231_BcdToDecimal(dateRaw & 0x3FU);
+    dateTime->date =
+        DS3231_BcdToDecimal(
+            dateRaw & 0x3FU
+        );
 
-    /*
-     * Month.
-     *
-     * Bit 7 merupakan century bit.
-     */
-    dateTime->month = DS3231_BcdToDecimal(monthRaw & 0x1FU);
+    dateTime->month =
+        DS3231_BcdToDecimal(
+            monthRaw & 0x1FU
+        );
 
-    /*
-     * Year.
-     */
-    dateTime->year = (uint16_t)(2000U + DS3231_BcdToDecimal(yearRaw));
+    dateTime->year =
+        (uint16_t)(
+            2000U +
+            DS3231_BcdToDecimal(yearRaw)
+        );
 
     if ((monthRaw & 0x80U) != 0U)
     {
         dateTime->year += 100U;
     }
 
-    PRINTF("[RTC] Complete date/time register read successful.\r\n");
+    if (!DS3231_IsDateTimeRangeValid(dateTime))
+    {
+        PRINTF(
+            "[RTC] ERROR: Invalid date/time values read from DS3231.\r\n"
+        );
+
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Complete date/time register read successful.\r\n"
+    );
+
+    return true;
+}
+
+bool DS3231_SetDateTime(const ds3231_datetime_t *dateTime)
+{
+    if (!DS3231_IsDateTimeRangeValid(dateTime))
+    {
+        PRINTF(
+            "[RTC] ERROR: Invalid date/time supplied for write.\r\n"
+        );
+
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Writing complete date/time to DS3231...\r\n"
+    );
+
+    PRINTF(
+        "[RTC] Writing seconds register 0x00...\r\n"
+    );
+
+    if (!DS3231_WriteRegister(
+            DS3231_REGISTER_SECONDS,
+            DS3231_DecimalToBcd(dateTime->second)))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Writing minutes register 0x01...\r\n"
+    );
+
+    if (!DS3231_WriteRegister(
+            DS3231_REGISTER_MINUTES,
+            DS3231_DecimalToBcd(dateTime->minute)))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Writing hours register 0x02...\r\n"
+    );
+
+    if (!DS3231_WriteRegister(
+            DS3231_REGISTER_HOURS,
+            DS3231_DecimalToBcd(dateTime->hour)))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Writing day register 0x03...\r\n"
+    );
+
+    if (!DS3231_WriteRegister(
+            DS3231_REGISTER_DAY,
+            DS3231_DecimalToBcd(dateTime->day)))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Writing date register 0x04...\r\n"
+    );
+
+    if (!DS3231_WriteRegister(
+            DS3231_REGISTER_DATE,
+            DS3231_DecimalToBcd(dateTime->date)))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Writing month register 0x05...\r\n"
+    );
+
+    if (!DS3231_WriteRegister(
+            DS3231_REGISTER_MONTH,
+            DS3231_DecimalToBcd(dateTime->month)))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Writing year register 0x06...\r\n"
+    );
+
+    if (!DS3231_WriteRegister(
+            DS3231_REGISTER_YEAR,
+            DS3231_DecimalToBcd(
+                (uint8_t)(dateTime->year - 2000U))))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Date/time registers written successfully.\r\n"
+    );
+
+    if (!DS3231_ClearOscillatorStopFlag())
+    {
+        PRINTF(
+            "[RTC] ERROR: Unable to clear oscillator stop flag.\r\n"
+        );
+
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Date/time write completed successfully.\r\n"
+    );
+
+    return true;
+}
+
+bool DS3231_IsTimeValid(void)
+{
+    uint8_t statusRegister = 0U;
+
+    PRINTF(
+        "[RTC] Reading status register 0x0F...\r\n"
+    );
+
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_STATUS,
+            &statusRegister))
+    {
+        PRINTF(
+            "[RTC] ERROR: Unable to read status register.\r\n"
+        );
+
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Status register = 0x%02X\r\n",
+        statusRegister
+    );
+
+    if ((statusRegister & DS3231_STATUS_OSF_MASK) != 0U)
+    {
+        PRINTF(
+            "[RTC] Oscillator Stop Flag = SET\r\n"
+        );
+
+        PRINTF(
+            "[RTC] RTC time status = INVALID\r\n"
+        );
+
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Oscillator Stop Flag = CLEAR\r\n"
+    );
+
+    PRINTF(
+        "[RTC] RTC time status = VALID\r\n"
+    );
+
+    return true;
+}
+
+bool DS3231_ClearOscillatorStopFlag(void)
+{
+    uint8_t statusRegister = 0U;
+
+    PRINTF(
+        "[RTC] Clearing Oscillator Stop Flag...\r\n"
+    );
+
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_STATUS,
+            &statusRegister))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Status before clear = 0x%02X\r\n",
+        statusRegister
+    );
+
+    statusRegister &=
+        (uint8_t)(~DS3231_STATUS_OSF_MASK);
+
+    if (!DS3231_WriteRegister(
+            DS3231_REGISTER_STATUS,
+            statusRegister))
+    {
+        return false;
+    }
+
+    if (!DS3231_ReadRegister(
+            DS3231_REGISTER_STATUS,
+            &statusRegister))
+    {
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Status after clear = 0x%02X\r\n",
+        statusRegister
+    );
+
+    if ((statusRegister & DS3231_STATUS_OSF_MASK) != 0U)
+    {
+        PRINTF(
+            "[RTC] ERROR: Oscillator Stop Flag is still set.\r\n"
+        );
+
+        return false;
+    }
+
+    PRINTF(
+        "[RTC] Oscillator Stop Flag cleared successfully.\r\n"
+    );
 
     return true;
 }
