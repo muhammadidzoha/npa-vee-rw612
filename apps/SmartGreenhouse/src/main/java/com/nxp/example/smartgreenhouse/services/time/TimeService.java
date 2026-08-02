@@ -19,8 +19,6 @@ public final class TimeService {
     private static final String[] NTP_SERVERS = {"time.google.com", "0.pool.ntp.org"};
     private static final int NTP_TIMEOUT_MS = 5000;
 
-    private static final boolean FORCE_NTP_RESEED = false;
-
     private final RtcService rtcService;
 
     private Timer clockTimer;
@@ -30,8 +28,8 @@ public final class TimeService {
 
     private boolean timeSynchronized;
 
-    private volatile boolean rtcInitializationStarted;
-    private volatile boolean forceNtpReseedPending;
+    private boolean rtcInitializationStarted;
+    private boolean rtcInitializationFinished;
 
     public TimeService() {
         this.rtcService = new RtcService();
@@ -40,7 +38,7 @@ public final class TimeService {
         this.timeBaseReferenceMillis = 0L;
         this.timeSynchronized = false;
         this.rtcInitializationStarted = false;
-        this.forceNtpReseedPending = FORCE_NTP_RESEED;
+        this.rtcInitializationFinished = false;
     }
 
     public interface ClockListener {
@@ -73,16 +71,14 @@ public final class TimeService {
     }
 
     public boolean synchronizeTime() {
-        if (!this.forceNtpReseedPending) {
-            if (loadTimeFromRtcIfValid()) {
-                LOGGER.log(Level.INFO, "RTC is valid | NTP synchronization skipped.");
-                return true;
-            }
+        waitForRtcInitialization();
 
-            LOGGER.log(Level.INFO, "RTC is not valid | NTP synchronization required.");
-        } else {
-            LOGGER.log(Level.INFO, "RTC forced NTP reseed is active | requesting NTP.");
+        if (isTimeSynchronized()) {
+            LOGGER.log(Level.INFO, "Time already available from RTC | NTP synchronization skipped.");
+            return true;
         }
+
+        LOGGER.log(Level.INFO, "No valid RTC time available | NTP synchronization required.");
 
         return synchronizeFromNtp();
     }
@@ -112,55 +108,50 @@ public final class TimeService {
     }
 
     private void initializeTimeFromRtc() {
-        if (this.forceNtpReseedPending) {
-            LOGGER.log(Level.INFO, "RTC startup load skipped | forced NTP reseed is pending.");
-            return;
+        try {
+            LOGGER.log(Level.INFO, "Checking RTC as startup time source.");
+
+            if (loadTimeFromRtcIfValid()) {
+                LOGGER.log(Level.INFO, "Startup time loaded successfully from RTC | jakartaTime=" + Time.formatJakartaTime(getCurrentUtcMillis()));
+            } else {
+                LOGGER.log(Level.WARNING, "RTC startup time unavailable | waiting for WiFi/NTP.");
+            }
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.WARNING, "RTC startup initialization failed | error=" + exception);
+        } finally {
+            markRtcInitializationFinished();
         }
-
-        LOGGER.log(Level.INFO, "Checking RTC as startup time source.");
-
-        if (!loadTimeFromRtcIfValid()) {
-            LOGGER.log(Level.WARNING, "RTC startup time unavailable | waiting for WiFi/NTP.");
-            return;
-        }
-
-        LOGGER.log(Level.INFO, "Startup time loaded successfully from RTC | jakartaTime=" + Time.formatJakartaTime(getCurrentUtcMillis()));
     }
 
     private boolean loadTimeFromRtcIfValid() {
-        try {
-            if (!this.rtcService.initialize()) {
-                LOGGER.log(Level.WARNING, "RTC initialization failed.");
-                return false;
-            }
-
-            if (!this.rtcService.isTimeValid()) {
-                LOGGER.log(Level.WARNING, "RTC validity check failed.");
-                return false;
-            }
-
-            long rtcUtcMillis = this.rtcService.readUtcMillis();
-
-            if (rtcUtcMillis <= 0L) {
-                LOGGER.log(Level.WARNING, "RTC returned invalid UTC timestamp.");
-                return false;
-            }
-
-            setTimeBase(rtcUtcMillis, Util.platformTimeMillis());
-            Util.setCurrentTimeMillis(rtcUtcMillis);
-
-            LOGGER.log(
-                    Level.INFO,
-                    "Time loaded from RTC"
-                            + " | utcMillis=" + rtcUtcMillis
-                            + " | jakartaTime=" + Time.formatJakartaTime(rtcUtcMillis)
-            );
-
-            return true;
-        } catch (RuntimeException exception) {
-            LOGGER.log(Level.WARNING, "RTC time loading failed | error=" + exception);
+        if (!this.rtcService.initialize()) {
+            LOGGER.log(Level.WARNING, "RTC initialization failed.");
             return false;
         }
+
+        if (!this.rtcService.isTimeValid()) {
+            LOGGER.log(Level.WARNING, "RTC validity check failed.");
+            return false;
+        }
+
+        long rtcUtcMillis = this.rtcService.readUtcMillis();
+
+        if (rtcUtcMillis <= 0L) {
+            LOGGER.log(Level.WARNING, "RTC returned invalid UTC timestamp.");
+            return false;
+        }
+
+        setTimeBase(rtcUtcMillis, Util.platformTimeMillis());
+        Util.setCurrentTimeMillis(rtcUtcMillis);
+
+        LOGGER.log(
+                Level.INFO,
+                "Time loaded from RTC"
+                        + " | utcMillis=" + rtcUtcMillis
+                        + " | jakartaTime=" + Time.formatJakartaTime(rtcUtcMillis)
+        );
+
+        return true;
     }
 
     private boolean synchronizeFromNtp() {
@@ -196,8 +187,6 @@ public final class TimeService {
                 boolean rtcWritten = this.rtcService.writeUtcMillis(currentUtcMillis);
 
                 if (rtcWritten) {
-                    this.forceNtpReseedPending = false;
-
                     LOGGER.log(Level.INFO, "NTP UTC successfully written to RTC.");
 
                     boolean rtcValid = this.rtcService.isTimeValid();
@@ -218,6 +207,22 @@ public final class TimeService {
 
         LOGGER.log(Level.WARNING, "Time synchronization failed.");
         return false;
+    }
+
+    private synchronized void markRtcInitializationFinished() {
+        this.rtcInitializationFinished = true;
+        notifyAll();
+    }
+
+    private synchronized void waitForRtcInitialization() {
+        while (this.rtcInitializationStarted && !this.rtcInitializationFinished) {
+            try {
+                wait();
+            } catch (InterruptedException exception) {
+                LOGGER.log(Level.WARNING, "Waiting for RTC initialization interrupted | error=" + exception);
+                return;
+            }
+        }
     }
 
     private synchronized void setTimeBase(long utcMillis, long referenceMillis) {
