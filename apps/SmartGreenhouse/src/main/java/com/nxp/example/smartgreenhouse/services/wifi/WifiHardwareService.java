@@ -17,8 +17,6 @@ public final class WifiHardwareService {
     private static final String PROVISIONING_SSID = "smartgreenhouse";
     private static final String PROVISIONING_PASSWORD = "smartgreenhouse";
     private static final int MAX_PROVISIONING_NETWORKS = 12;
-    private static final int PROVISIONING_SCAN_MAX_ATTEMPTS = 3;
-    private static final long PROVISIONING_SCAN_RETRY_DELAY_MS = 1000L;
 
     private final WifiManager wifiManager;
 
@@ -47,9 +45,7 @@ public final class WifiHardwareService {
 
         AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
 
-        if (joinedAccessPoint == null) {
-            return false;
-        }
+        if (joinedAccessPoint == null) return false;
 
         return ssid.equals(joinedAccessPoint.getSSID());
     }
@@ -57,9 +53,7 @@ public final class WifiHardwareService {
     public synchronized String getConnectedSsid() throws IOException {
         AccessPoint joinedAccessPoint = this.wifiManager.getJoined();
 
-        if (joinedAccessPoint == null) {
-            return null;
-        }
+        if (joinedAccessPoint == null) return null;
 
         return joinedAccessPoint.getSSID();
     }
@@ -110,33 +104,31 @@ public final class WifiHardwareService {
         return connected;
     }
 
+    public synchronized AccessPoint[] scanAvailableNetworks() throws IOException {
+        stopProvisioningAccessPoint();
+        disconnectCurrentNetwork();
+
+        LOGGER.log(Level.INFO, "Available WiFi scan started | active=false");
+
+        AccessPoint[] scannedAccessPoints = this.wifiManager.scan(false);
+
+        LOGGER.log(Level.INFO, "Available WiFi scan completed | count=" + getAccessPointCount(scannedAccessPoints));
+
+        return scannedAccessPoints == null ? new AccessPoint[0] : scannedAccessPoints;
+    }
+
     public synchronized AccessPoint[] scanProvisioningNetworks() throws IOException {
         stopProvisioningAccessPoint();
         disconnectCurrentNetwork();
 
-        IOException lastException = null;
+        LOGGER.log(Level.INFO, "Provisioning WiFi scan started | active=false");
 
-        for (int attempt = 1; attempt <= PROVISIONING_SCAN_MAX_ATTEMPTS; attempt++) {
-            try {
-                LOGGER.log(Level.INFO, "Provisioning WiFi scan started | active=false | attempt=" + attempt + "/" + PROVISIONING_SCAN_MAX_ATTEMPTS);
+        AccessPoint[] scannedAccessPoints = this.wifiManager.scan(false);
+        AccessPoint[] selectedAccessPoints = selectProvisioningNetworks(scannedAccessPoints);
 
-                AccessPoint[] scannedAccessPoints = this.wifiManager.scan(false);
-                AccessPoint[] selectedAccessPoints = selectProvisioningNetworks(scannedAccessPoints);
+        LOGGER.log(Level.INFO, "Provisioning WiFi scan completed | scanned=" + getAccessPointCount(scannedAccessPoints) + " | selected=" + selectedAccessPoints.length);
 
-                LOGGER.log(Level.INFO, "Provisioning WiFi scan completed | attempt=" + attempt + " | scanned=" + getAccessPointCount(scannedAccessPoints) + " | selected=" + selectedAccessPoints.length);
-
-                return selectedAccessPoints;
-            } catch (IOException exception) {
-                lastException = exception;
-                LOGGER.log(Level.WARNING, "Provisioning WiFi scan failed | attempt=" + attempt + "/" + PROVISIONING_SCAN_MAX_ATTEMPTS + " | error=" + exception);
-
-                if (attempt < PROVISIONING_SCAN_MAX_ATTEMPTS) waitBeforeScanRetry();
-            }
-        }
-
-        if (lastException != null) throw lastException;
-
-        return new AccessPoint[0];
+        return selectedAccessPoints;
     }
 
     public synchronized void startProvisioningAccessPoint() throws IOException {
@@ -162,9 +154,7 @@ public final class WifiHardwareService {
     }
 
     public synchronized void stopProvisioningAccessPoint() throws IOException {
-        if (!this.wifiManager.isSoftAPEnabled()) {
-            return;
-        }
+        if (!this.wifiManager.isSoftAPEnabled()) return;
 
         LOGGER.log(Level.INFO, "Stopping provisioning SoftAP");
         this.wifiManager.disableSoftAP();
@@ -175,18 +165,8 @@ public final class WifiHardwareService {
         return this.wifiManager.isSoftAPEnabled();
     }
 
-    private static void waitBeforeScanRetry() throws IOException {
-        try {
-            Thread.sleep(PROVISIONING_SCAN_RETRY_DELAY_MS);
-        } catch (InterruptedException exception) {
-            throw new IOException("WiFi scan retry interrupted.");
-        }
-    }
-
     private static AccessPoint[] selectProvisioningNetworks(AccessPoint[] scannedAccessPoints) {
-        if (scannedAccessPoints == null || scannedAccessPoints.length == 0) {
-            return new AccessPoint[0];
-        }
+        if (scannedAccessPoints == null || scannedAccessPoints.length == 0) return new AccessPoint[0];
 
         AccessPoint[] selectedAccessPoints = new AccessPoint[MAX_PROVISIONING_NETWORKS];
         int selectedCount = 0;
@@ -194,18 +174,14 @@ public final class WifiHardwareService {
         for (int index = 0; index < scannedAccessPoints.length; index++) {
             AccessPoint candidate = scannedAccessPoints[index];
 
-            if (!isUsableProvisioningNetwork(candidate)) {
-                continue;
-            }
+            if (!isUsableProvisioningNetwork(candidate)) continue;
 
             int duplicateIndex = findAccessPointIndexBySsid(selectedAccessPoints, selectedCount, candidate.getSSID());
 
             if (duplicateIndex >= 0) {
                 AccessPoint existing = selectedAccessPoints[duplicateIndex];
 
-                if (candidate.getRSSI() > existing.getRSSI()) {
-                    selectedAccessPoints[duplicateIndex] = candidate;
-                }
+                if (candidate.getRSSI() > existing.getRSSI()) selectedAccessPoints[duplicateIndex] = candidate;
 
                 continue;
             }
@@ -218,32 +194,24 @@ public final class WifiHardwareService {
 
             int weakestIndex = findWeakestAccessPointIndex(selectedAccessPoints, selectedCount);
 
-            if (weakestIndex >= 0 && candidate.getRSSI() > selectedAccessPoints[weakestIndex].getRSSI()) {
-                selectedAccessPoints[weakestIndex] = candidate;
-            }
+            if (weakestIndex >= 0 && candidate.getRSSI() > selectedAccessPoints[weakestIndex].getRSSI()) selectedAccessPoints[weakestIndex] = candidate;
         }
 
         sortAccessPointsByRssi(selectedAccessPoints, selectedCount);
 
         AccessPoint[] result = new AccessPoint[selectedCount];
 
-        for (int index = 0; index < selectedCount; index++) {
-            result[index] = selectedAccessPoints[index];
-        }
+        for (int index = 0; index < selectedCount; index++) result[index] = selectedAccessPoints[index];
 
         return result;
     }
 
     private static boolean isUsableProvisioningNetwork(AccessPoint accessPoint) {
-        if (accessPoint == null) {
-            return false;
-        }
+        if (accessPoint == null) return false;
 
         String ssid = accessPoint.getSSID();
 
-        if (ssid == null || ssid.length() == 0) {
-            return false;
-        }
+        if (ssid == null || ssid.length() == 0) return false;
 
         return !PROVISIONING_SSID.equals(ssid);
     }
@@ -252,25 +220,19 @@ public final class WifiHardwareService {
         for (int index = 0; index < count; index++) {
             AccessPoint accessPoint = accessPoints[index];
 
-            if (accessPoint != null && ssid.equals(accessPoint.getSSID())) {
-                return index;
-            }
+            if (accessPoint != null && ssid.equals(accessPoint.getSSID())) return index;
         }
 
         return -1;
     }
 
     private static int findWeakestAccessPointIndex(AccessPoint[] accessPoints, int count) {
-        if (count <= 0) {
-            return -1;
-        }
+        if (count <= 0) return -1;
 
         int weakestIndex = 0;
 
         for (int index = 1; index < count; index++) {
-            if (accessPoints[index].getRSSI() < accessPoints[weakestIndex].getRSSI()) {
-                weakestIndex = index;
-            }
+            if (accessPoints[index].getRSSI() < accessPoints[weakestIndex].getRSSI()) weakestIndex = index;
         }
 
         return weakestIndex;
@@ -295,20 +257,14 @@ public final class WifiHardwareService {
     }
 
     private static void validateSsid(String ssid) {
-        if (ssid == null || ssid.length() == 0) {
-            throw new IllegalArgumentException("SSID Wi-Fi tidak boleh kosong.");
-        }
+        if (ssid == null || ssid.length() == 0) throw new IllegalArgumentException("SSID Wi-Fi tidak boleh kosong.");
     }
 
     private static void validatePassword(String password) {
         int passwordLength = password == null ? 0 : password.length();
 
-        if (passwordLength == 0) {
-            return;
-        }
+        if (passwordLength == 0) return;
 
-        if (passwordLength < 8 || passwordLength > 64) {
-            throw new IllegalArgumentException("Password Wi-Fi harus terdiri dari 8 sampai 64 karakter.");
-        }
+        if (passwordLength < 8 || passwordLength > 64) throw new IllegalArgumentException("Password Wi-Fi harus terdiri dari 8 sampai 64 karakter.");
     }
 }

@@ -70,17 +70,9 @@ public final class WifiProvisioningService {
     }
 
     public WifiProvisioningService(WifiHardwareService wifiHardwareService, WifiCredentialStore credentialStore, Listener listener) {
-        if (wifiHardwareService == null) {
-            throw new NullPointerException("wifiHardwareService tidak boleh null.");
-        }
-
-        if (credentialStore == null) {
-            throw new NullPointerException("credentialStore tidak boleh null.");
-        }
-
-        if (listener == null) {
-            throw new NullPointerException("listener tidak boleh null.");
-        }
+        if (wifiHardwareService == null) throw new NullPointerException("wifiHardwareService tidak boleh null.");
+        if (credentialStore == null) throw new NullPointerException("credentialStore tidak boleh null.");
+        if (listener == null) throw new NullPointerException("listener tidak boleh null.");
 
         this.wifiHardwareService = wifiHardwareService;
         this.credentialStore = credentialStore;
@@ -247,37 +239,60 @@ public final class WifiProvisioningService {
             }
         }
 
-        if (restoreAfterFailure) {
-            return startPreviousConnectionRestoreWorker();
-        }
+        if (restoreAfterFailure) return startPreviousConnectionRestoreWorker();
 
         return false;
     }
 
     private void runAutoConnect() {
-        WifiCredentials credentials = null;
+        WifiCredentials[] storedCredentials = null;
+        WifiCredentials connectedCredential = null;
         boolean connected = false;
         String failureMessage = null;
 
         try {
-            credentials = this.credentialStore.load();
+            storedCredentials = this.credentialStore.loadAll();
 
-            if (credentials == null) {
+            if (storedCredentials == null || storedCredentials.length == 0) {
                 LOGGER.log(Level.INFO, "No stored WiFi credentials found");
                 finishAutoConnectWithoutCredential();
                 return;
             }
 
-            LOGGER.log(Level.INFO, "Stored WiFi credential found | SSID=" + credentials.getSsid());
+            LOGGER.log(Level.INFO, "Stored WiFi credentials found | count=" + storedCredentials.length);
 
             WifiCapability capability = this.wifiHardwareService.getCapability();
             LOGGER.log(Level.INFO, "WiFi capability: " + capability);
 
-            connected = this.wifiHardwareService.connectToNetwork(credentials.getSsid(), credentials.getPassword());
+            AccessPoint[] availableNetworks = this.wifiHardwareService.scanAvailableNetworks();
 
-            if (!connected) {
-                failureMessage = "Tidak dapat terhubung ke Wi-Fi tersimpan: " + credentials.getSsid();
+            LOGGER.log(Level.INFO, "Automatic WiFi availability scan completed | networkCount=" + countAccessPoints(availableNetworks));
+
+            for (int index = 0; index < storedCredentials.length; index++) {
+                WifiCredentials credentials = storedCredentials[index];
+
+                if (credentials == null) continue;
+
+                String ssid = credentials.getSsid();
+
+                if (findAccessPointBySsid(availableNetworks, ssid) == null) {
+                    LOGGER.log(Level.INFO, "Stored WiFi is not currently available | SSID=" + ssid + " | skipped=true");
+                    continue;
+                }
+
+                LOGGER.log(Level.INFO, "Stored WiFi is available | SSID=" + ssid + " | connecting=true");
+
+                connected = this.wifiHardwareService.connectToNetwork(ssid, credentials.getPassword());
+
+                if (connected) {
+                    connectedCredential = credentials;
+                    break;
+                }
+
+                LOGGER.log(Level.WARNING, "Stored WiFi connection failed | SSID=" + ssid);
             }
+
+            if (!connected) failureMessage = "Tidak ada Wi-Fi tersimpan yang tersedia atau dapat terhubung.";
         } catch (Exception exception) {
             failureMessage = "Koneksi otomatis Wi-Fi gagal.";
             LOGGER.log(Level.WARNING, "Automatic WiFi connection failed | error=" + exception);
@@ -285,22 +300,20 @@ public final class WifiProvisioningService {
 
         synchronized (this.stateLock) {
             this.autoConnectRunning = false;
-            this.connectedCredentials = connected ? credentials : null;
+            this.connectedCredentials = connected ? connectedCredential : null;
         }
 
-        if (connected && credentials != null) {
+        if (connected && connectedCredential != null) {
             setState(WifiProvisioningState.CONNECTED);
             notifyConnectionStatus(true);
-            notifyConnected(credentials.getSsid());
+            notifyConnected(connectedCredential.getSsid());
 
-            LOGGER.log(Level.INFO, "Automatic WiFi connection successful | SSID=" + credentials.getSsid());
+            LOGGER.log(Level.INFO, "Automatic WiFi connection successful | SSID=" + connectedCredential.getSsid());
         } else {
             setState(WifiProvisioningState.FAILED);
             notifyConnectionStatus(false);
 
-            if (failureMessage != null) {
-                notifyFailed(failureMessage);
-            }
+            if (failureMessage != null) notifyFailed(failureMessage);
         }
     }
 
@@ -328,9 +341,7 @@ public final class WifiProvisioningService {
 
             LOGGER.log(Level.INFO, "Provisioning WiFi scan completed | networkCount=" + countAccessPoints(accessPoints));
 
-            if (!this.provisioningCancelRequested) {
-                this.wifiHardwareService.startProvisioningAccessPoint();
-            }
+            if (!this.provisioningCancelRequested) this.wifiHardwareService.startProvisioningAccessPoint();
 
             if (!this.provisioningCancelRequested) {
                 this.provisioningHttpServer = createProvisioningHttpServer(accessPoints);
@@ -419,9 +430,7 @@ public final class WifiProvisioningService {
 
             connected = this.wifiHardwareService.connectToNetwork(targetSsid, targetPassword);
 
-            if (!connected) {
-                failureMessage = "Tidak dapat terhubung ke Wi-Fi " + targetSsid + ".";
-            }
+            if (!connected) failureMessage = "Tidak dapat terhubung ke Wi-Fi " + targetSsid + ".";
         } catch (Exception exception) {
             failureMessage = "Koneksi ke Wi-Fi " + targetSsid + " gagal.";
             LOGGER.log(Level.WARNING, "Provisioned WiFi connection failed | SSID=" + targetSsid + " | error=" + exception);
@@ -677,9 +686,7 @@ public final class WifiProvisioningService {
                                 return;
                             }
 
-                            if (password == null) {
-                                password = "";
-                            }
+                            if (password == null) password = "";
 
                             if (!isPasswordValid(password)) {
                                 setProvisioningHtmlResponse(
@@ -722,9 +729,7 @@ public final class WifiProvisioningService {
         while (!this.provisioningCredentialsSubmitted && !this.provisioningCancelRequested) {
             long remaining = deadline - System.currentTimeMillis();
 
-            if (remaining <= 0L) {
-                return false;
-            }
+            if (remaining <= 0L) return false;
 
             long sleepDuration = remaining < PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS ? remaining : PROVISIONING_CREDENTIAL_POLL_INTERVAL_MS;
 
@@ -737,9 +742,7 @@ public final class WifiProvisioningService {
     private void stopProvisioningHttpServer() {
         HttpServer server = this.provisioningHttpServer;
 
-        if (server == null) {
-            return;
-        }
+        if (server == null) return;
 
         try {
             LOGGER.log(Level.INFO, "Stopping HOKA provisioning server");
@@ -785,41 +788,31 @@ public final class WifiProvisioningService {
     }
 
     private static AccessPoint findAccessPointBySsid(AccessPoint[] accessPoints, String ssid) {
-        if (accessPoints == null || ssid == null) {
-            return null;
-        }
+        if (accessPoints == null || ssid == null) return null;
 
         for (int index = 0; index < accessPoints.length; index++) {
             AccessPoint accessPoint = accessPoints[index];
 
-            if (accessPoint != null && ssid.equals(accessPoint.getSSID())) {
-                return accessPoint;
-            }
+            if (accessPoint != null && ssid.equals(accessPoint.getSSID())) return accessPoint;
         }
 
         return null;
     }
 
     private static int countAccessPoints(AccessPoint[] accessPoints) {
-        if (accessPoints == null) {
-            return 0;
-        }
+        if (accessPoints == null) return 0;
 
         int count = 0;
 
         for (int index = 0; index < accessPoints.length; index++) {
-            if (accessPoints[index] != null) {
-                count++;
-            }
+            if (accessPoints[index] != null) count++;
         }
 
         return count;
     }
 
     private static boolean isPasswordValid(String password) {
-        if (password == null || password.length() == 0) {
-            return true;
-        }
+        if (password == null || password.length() == 0) return true;
 
         return password.length() >= 8 && password.length() <= 64;
     }
