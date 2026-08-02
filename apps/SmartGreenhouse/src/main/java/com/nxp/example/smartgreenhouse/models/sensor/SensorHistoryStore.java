@@ -1,7 +1,10 @@
 package com.nxp.example.smartgreenhouse.models.sensor;
 
+import ej.bon.Util;
+
 public final class SensorHistoryStore {
-    public static final int DEFAULT_MAX_POINTS_PER_NODE = 24;
+
+    public static final int DEFAULT_MAX_POINTS_PER_NODE = 8;
 
     private final int maxPointsPerNode;
     private NodeHistory[] nodeHistories;
@@ -11,44 +14,35 @@ public final class SensorHistoryStore {
     }
 
     public SensorHistoryStore(int maxPointsPerNode) {
-        if (maxPointsPerNode <= 0) {
-            maxPointsPerNode = DEFAULT_MAX_POINTS_PER_NODE;
-        }
+        if (maxPointsPerNode <= 0) maxPointsPerNode = DEFAULT_MAX_POINTS_PER_NODE;
 
         this.maxPointsPerNode = maxPointsPerNode;
         this.nodeHistories = new NodeHistory[0];
     }
 
     public void add(SensorHistoryEntry entry) {
-        if (entry == null || entry.getNodeId() < 0) {
-            return;
-        }
+        if (entry == null || entry.getNodeId() < 0 || entry.getSensorData() == null) return;
 
-        NodeHistory nodeHistory = findNodeHistory(entry.getNodeId());
+        long receivedTimestamp = Util.currentTimeMillis();
+        SensorHistoryEntry timestampedEntry = new SensorHistoryEntry(receivedTimestamp, entry.getSensorData());
 
-        if (nodeHistory == null) {
-            nodeHistory = createNodeHistory(entry.getNodeId());
-        }
+        NodeHistory nodeHistory = findNodeHistory(timestampedEntry.getNodeId());
 
-        nodeHistory.add(entry);
+        if (nodeHistory == null) nodeHistory = createNodeHistory(timestampedEntry.getNodeId());
+
+        nodeHistory.add(timestampedEntry);
     }
 
     public void addAll(SensorHistoryEntry[] entries) {
-        if (entries == null) {
-            return;
-        }
+        if (entries == null) return;
 
-        for (SensorHistoryEntry entry : entries) {
-            add(entry);
-        }
+        for (SensorHistoryEntry entry : entries) add(entry);
     }
 
     public SensorHistoryEntry[] getByNodeId(int nodeId) {
         NodeHistory nodeHistory = findNodeHistory(nodeId);
 
-        if (nodeHistory == null) {
-            return new SensorHistoryEntry[0];
-        }
+        if (nodeHistory == null) return new SensorHistoryEntry[0];
 
         return nodeHistory.toArray();
     }
@@ -59,9 +53,7 @@ public final class SensorHistoryStore {
 
     private NodeHistory findNodeHistory(int nodeId) {
         for (NodeHistory nodeHistory : this.nodeHistories) {
-            if (nodeHistory.nodeId == nodeId) {
-                return nodeHistory;
-            }
+            if (nodeHistory.nodeId == nodeId) return nodeHistory;
         }
 
         return null;
@@ -69,13 +61,11 @@ public final class SensorHistoryStore {
 
     private NodeHistory createNodeHistory(int nodeId) {
         NodeHistory nodeHistory = new NodeHistory(nodeId, this.maxPointsPerNode);
-
         NodeHistory[] updated = new NodeHistory[this.nodeHistories.length + 1];
 
         System.arraycopy(this.nodeHistories, 0, updated, 0, this.nodeHistories.length);
 
         updated[this.nodeHistories.length] = nodeHistory;
-
         this.nodeHistories = updated;
 
         return nodeHistory;
@@ -92,7 +82,6 @@ public final class SensorHistoryStore {
         private NodeHistory(int nodeId, int capacity) {
             this.nodeId = nodeId;
             this.buffer = new SensorHistoryEntry[capacity];
-
             this.startIndex = 0;
             this.size = 0;
         }
@@ -100,14 +89,12 @@ public final class SensorHistoryStore {
         private void add(SensorHistoryEntry entry) {
             if (this.size < this.buffer.length) {
                 int destinationIndex = (this.startIndex + this.size) % this.buffer.length;
-
                 this.buffer[destinationIndex] = entry;
                 this.size++;
                 return;
             }
 
             this.buffer[this.startIndex] = entry;
-
             this.startIndex = (this.startIndex + 1) % this.buffer.length;
         }
 
