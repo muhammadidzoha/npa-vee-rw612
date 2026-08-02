@@ -211,9 +211,10 @@ endif (ENABLE_WIFI)
     ${SdkMiddlewareDirPath}/coreHTTP
 )
 
+set(CONFIG_USE_driver_flexcomm_i2c true)
+
 include(${VeeSdkRootDirPath}/devices/RW612/all_lib_device.cmake)
 
-include(driver_i2c)
 include(microej_core)
 include(microej_cpuload)
 include(microej_security)
