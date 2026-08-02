@@ -54,6 +54,7 @@
 
 #include "shell.h"
 #include "lora.h"
+#include "ds3231.h"
 
 #define nxp_pa_task_PRIORITY (configMAX_PRIORITIES - 6)
 
@@ -90,6 +91,21 @@ int main(void)
     BOARD_InitLcdicClock();
 
     CLOCK_AttachClk(kSFRO_to_FLEXCOMM2);
+
+    PRINTF("\r\n[RTC] Starting DS3231 hardware test...\r\n");
+
+    if (!DS3231_Init())
+    {
+        PRINTF("[RTC] ERROR: DS3231 initialization failed.\r\n");
+    }
+    else if (!DS3231_TestCommunication())
+    {
+        PRINTF("[RTC] ERROR: DS3231 communication test failed.\r\n");
+    }
+    else
+    {
+        PRINTF("[RTC] DS3231 hardware test PASSED.\r\n");
+    }
 
     GPIO_PortInit(GPIO, 0);
     GPIO_PortInit(GPIO, 1);

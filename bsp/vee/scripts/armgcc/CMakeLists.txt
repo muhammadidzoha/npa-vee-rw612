@@ -72,6 +72,9 @@ add_executable(${MCUX_SDK_PROJECT_NAME}
     "${MicroEjRootDirPath}/src/bsp/lora/lora.h"
     "${MicroEjRootDirPath}/src/bsp/lora/lora_native.c"
 
+    "${MicroEjRootDirPath}/src/bsp/rtc/ds3231.c"
+    "${MicroEjRootDirPath}/src/bsp/rtc/ds3231.h"
+
     "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_storage.c"
     "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_storage.h"
     "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_native.c"
@@ -115,6 +118,7 @@ target_include_directories(${MCUX_SDK_PROJECT_NAME} PRIVATE
     ${MicroEjRootDirPath}/src/bsp
 
     ${MicroEjRootDirPath}/src/bsp/lora
+    ${MicroEjRootDirPath}/src/bsp/rtc
     ${MicroEjRootDirPath}/src/bsp/wifi
     ${MFlashRootDirPath}
     ${MFlashRootDirPath}/frdmrw612
@@ -209,6 +213,7 @@ endif (ENABLE_WIFI)
 
 include(${VeeSdkRootDirPath}/devices/RW612/all_lib_device.cmake)
 
+include(driver_i2c)
 include(microej_core)
 include(microej_cpuload)
 include(microej_security)
