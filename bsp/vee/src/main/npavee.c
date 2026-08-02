@@ -23,15 +23,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "pin_mux.h"
-#include "clock_config.h"
-#include "board.h"
 #include "fsl_lcdic.h"
 #include "fsl_lcdic_dma.h"
-#include "fsl_debug_console.h"
 #include "panel_func.h"
 
-#include "fsl_inputmux.h"
 #include "fsl_reset.h"
 #include "display_support.h"
 
@@ -57,8 +52,10 @@
 #include "ds3231.h"
 
 #define nxp_pa_task_PRIORITY (configMAX_PRIORITIES - 6)
+#define rtc_test_task_PRIORITY (tskIDLE_PRIORITY + 1)
 
 static void nxp_pa_task(void *pvParameters);
+static void rtc_test_task(void *pvParameters);
 
 static void BOARD_InitLcdicClock();
 
@@ -91,36 +88,6 @@ int main(void)
     BOARD_InitLcdicClock();
 
     CLOCK_AttachClk(kSFRO_to_FLEXCOMM2);
-
-    PRINTF("\r\n[RTC] Starting DS3231 hardware test...\r\n");
-
-    if (!DS3231_Init())
-    {
-        PRINTF("[RTC] ERROR: DS3231 initialization failed.\r\n");
-    }
-    else if (!DS3231_TestCommunication())
-    {
-        PRINTF("[RTC] ERROR: DS3231 communication test failed.\r\n");
-    }
-    else
-    {
-        ds3231_datetime_t rtcDateTime;
-
-        PRINTF("[RTC] DS3231 hardware test PASSED.\r\n");
-
-        PRINTF("[RTC] Starting full date/time read...\r\n");
-
-        if (DS3231_ReadDateTime(&rtcDateTime))
-        {
-            DS3231_PrintDateTime(&rtcDateTime);
-
-            PRINTF("[RTC] Full date/time test PASSED.\r\n");
-        }
-        else
-        {
-            PRINTF("[RTC] ERROR: Full date/time read failed.\r\n");
-        }
-    }
 
     GPIO_PortInit(GPIO, 0);
     GPIO_PortInit(GPIO, 1);
@@ -172,6 +139,26 @@ int main(void)
 
         while (1)
             ;
+    }
+
+    /*
+     * RTC tidak dites langsung di main().
+     *
+     * RTC dijalankan pada task terpisah dengan priority rendah.
+     * Task akan menunggu 5 detik supaya MicroJVM dan UI dapat
+     * berjalan terlebih dahulu.
+     */
+    if (xTaskCreate(
+            rtc_test_task,
+            "RTC_test",
+            2 * 1024,
+            NULL,
+            rtc_test_task_PRIORITY,
+            NULL) != pdPASS)
+    {
+        PRINTF(
+            "[RTC] ERROR: RTC test task creation failed.\r\n"
+        );
     }
 
     LORA_Start();
@@ -290,6 +277,8 @@ extern char _HeapAsFreeRAMSize
 static void nxp_pa_task(
     void *pvParameters)
 {
+    (void)pvParameters;
+
 #ifdef CPULOAD_ENABLED
 
     cpuload_init();
@@ -338,6 +327,134 @@ static void nxp_pa_task(
             NULL
         );
     }
+}
+
+/*
+ * RTC TEST TASK
+ *
+ * Untuk tahap sekarang kita hanya melakukan:
+ *
+ * 1. Tunggu 5 detik.
+ * 2. Initialize I2C2.
+ * 3. Read register seconds sekali.
+ * 4. Tunggu 1 detik.
+ * 5. Read register seconds sekali lagi.
+ *
+ * Belum membaca menit/jam/tanggal.
+ * Belum menulis RTC.
+ * Belum integrasi NTP.
+ */
+static void rtc_test_task(
+    void *pvParameters)
+{
+    (void)pvParameters;
+
+    /*
+     * Biarkan MicroJVM / UI start terlebih dahulu.
+     */
+    vTaskDelay(
+        pdMS_TO_TICKS(5000)
+    );
+
+    PRINTF(
+        "\r\n[RTC] =============================\r\n"
+    );
+
+    PRINTF(
+        "[RTC] Starting delayed RTC test\r\n"
+    );
+
+    PRINTF(
+        "[RTC] =============================\r\n"
+    );
+
+    /*
+     * Initialize peripheral I2C2.
+     */
+    if (!DS3231_Init())
+    {
+        PRINTF(
+            "[RTC] ERROR: DS3231 initialization failed.\r\n"
+        );
+
+        vTaskDelete(
+            NULL
+        );
+
+        return;
+    }
+
+    /*
+     * TEST 1
+     */
+    PRINTF(
+        "\r\n[RTC] TEST 1: First DS3231 read\r\n"
+    );
+
+    if (!DS3231_TestCommunication())
+    {
+        PRINTF(
+            "[RTC] ERROR: First DS3231 read failed.\r\n"
+        );
+
+        vTaskDelete(
+            NULL
+        );
+
+        return;
+    }
+
+    PRINTF(
+        "[RTC] TEST 1 PASSED\r\n"
+    );
+
+    /*
+     * Tunggu 1 detik agar kita juga bisa melihat
+     * apakah nilai seconds berubah.
+     */
+    vTaskDelay(
+        pdMS_TO_TICKS(1000)
+    );
+
+    /*
+     * TEST 2
+     */
+    PRINTF(
+        "\r\n[RTC] TEST 2: Second DS3231 read\r\n"
+    );
+
+    if (!DS3231_TestCommunication())
+    {
+        PRINTF(
+            "[RTC] ERROR: Second DS3231 read failed.\r\n"
+        );
+
+        vTaskDelete(
+            NULL
+        );
+
+        return;
+    }
+
+    PRINTF(
+        "[RTC] TEST 2 PASSED\r\n"
+    );
+
+    PRINTF(
+        "\r\n[RTC] Multiple I2C transaction test PASSED.\r\n"
+    );
+
+    PRINTF(
+        "[RTC] RTC test task finished.\r\n"
+    );
+
+    /*
+     * Test selesai.
+     * Task tidak perlu berjalan lagi.
+     */
+    vTaskDelete(
+        NULL
+    );
 }
 
 void vApplicationMallocFailedHook()
