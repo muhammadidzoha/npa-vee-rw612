@@ -347,10 +347,12 @@ static void nxp_pa_task(
 static void rtc_test_task(
     void *pvParameters)
 {
+    ds3231_datetime_t rtcDateTime;
+
     (void)pvParameters;
 
     /*
-     * Biarkan MicroJVM / UI start terlebih dahulu.
+     * Tunggu MicroJVM / UI start dahulu.
      */
     vTaskDelay(
         pdMS_TO_TICKS(5000)
@@ -361,7 +363,7 @@ static void rtc_test_task(
     );
 
     PRINTF(
-        "[RTC] Starting delayed RTC test\r\n"
+        "[RTC] Starting DS3231 date/time test\r\n"
     );
 
     PRINTF(
@@ -369,7 +371,7 @@ static void rtc_test_task(
     );
 
     /*
-     * Initialize peripheral I2C2.
+     * Initialize I2C2.
      */
     if (!DS3231_Init())
     {
@@ -385,16 +387,16 @@ static void rtc_test_task(
     }
 
     /*
-     * TEST 1
+     * Pertama pastikan device masih terdeteksi.
      */
     PRINTF(
-        "\r\n[RTC] TEST 1: First DS3231 read\r\n"
+        "\r\n[RTC] TEST 1: Communication\r\n"
     );
 
     if (!DS3231_TestCommunication())
     {
         PRINTF(
-            "[RTC] ERROR: First DS3231 read failed.\r\n"
+            "[RTC] ERROR: Communication test failed.\r\n"
         );
 
         vTaskDelete(
@@ -409,24 +411,24 @@ static void rtc_test_task(
     );
 
     /*
-     * Tunggu 1 detik agar kita juga bisa melihat
-     * apakah nilai seconds berubah.
+     * Beri jeda sebelum melakukan rangkaian
+     * transaksi berikutnya.
      */
     vTaskDelay(
         pdMS_TO_TICKS(1000)
     );
 
     /*
-     * TEST 2
+     * Full date/time read.
      */
     PRINTF(
-        "\r\n[RTC] TEST 2: Second DS3231 read\r\n"
+        "\r\n[RTC] TEST 2: Full date/time read\r\n"
     );
 
-    if (!DS3231_TestCommunication())
+    if (!DS3231_ReadDateTime(&rtcDateTime))
     {
         PRINTF(
-            "[RTC] ERROR: Second DS3231 read failed.\r\n"
+            "[RTC] ERROR: Full date/time read failed.\r\n"
         );
 
         vTaskDelete(
@@ -437,21 +439,24 @@ static void rtc_test_task(
     }
 
     PRINTF(
-        "[RTC] TEST 2 PASSED\r\n"
-    );
-
-    PRINTF(
-        "\r\n[RTC] Multiple I2C transaction test PASSED.\r\n"
-    );
-
-    PRINTF(
-        "[RTC] RTC test task finished.\r\n"
+        "[RTC] TEST 2 register reads PASSED\r\n"
     );
 
     /*
-     * Test selesai.
-     * Task tidak perlu berjalan lagi.
+     * Print hasil akhirnya.
      */
+    DS3231_PrintDateTime(
+        &rtcDateTime
+    );
+
+    PRINTF(
+        "[RTC] Full date/time test PASSED.\r\n"
+    );
+
+    PRINTF(
+        "[RTC] RTC task finished.\r\n"
+    );
+
     vTaskDelete(
         NULL
     );
