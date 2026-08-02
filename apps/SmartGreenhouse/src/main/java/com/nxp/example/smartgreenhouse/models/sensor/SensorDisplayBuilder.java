@@ -4,9 +4,9 @@ public class SensorDisplayBuilder {
 
     public static SensorDisplayItem build(SensorDefinition definition, SensorData data) {
         float value = extractValue(definition.getSensorId(), data);
-        SensorStatus status = SensorStatusEvaluator.evaluate(definition.getSensorId(), value);
-
-        return new SensorDisplayItem(definition, value, status);
+        boolean available = data.isAvailable();
+        SensorStatus status = available ? SensorStatusEvaluator.evaluate(definition.getSensorId(), value) : SensorStatus.OPTIMAL;
+        return new SensorDisplayItem(definition, value, status, available);
     }
 
     private static float extractValue(int sensorId, SensorData data) {

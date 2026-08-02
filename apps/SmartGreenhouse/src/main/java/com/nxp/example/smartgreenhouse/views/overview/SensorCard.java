@@ -5,6 +5,7 @@ import com.nxp.example.smartgreenhouse.models.sensor.SensorStatus;
 import com.nxp.example.smartgreenhouse.style.ApplicationColors;
 import com.nxp.example.smartgreenhouse.style.Fonts;
 import com.nxp.example.smartgreenhouse.style.Images;
+
 import ej.annotation.NonNullByDefault;
 import ej.microui.display.Font;
 import ej.microui.display.GraphicsContext;
@@ -23,7 +24,6 @@ public class SensorCard extends Widget {
     private static final int TITLE_TO_VALUE_GAP = 3;
     private static final int VALUE_TO_STATUS_GAP = 1;
 
-
     public SensorCard() {
         this.sensorCardFrame = Image.getImage(Images.CARD_FRAME);
     }
@@ -38,11 +38,9 @@ public class SensorCard extends Widget {
     }
 
     public int getStatusColor() {
-        if (displayItem == null) {
-            return ApplicationColors.STATUS_OPTIMAL_COLOR;
-        }
+        if (this.displayItem == null) return ApplicationColors.STATUS_OPTIMAL_COLOR;
 
-        switch (displayItem.getSensorStatus()) {
+        switch (this.displayItem.getSensorStatus()) {
             case WASPADA: return ApplicationColors.STATUS_WASPADA_COLOR;
             case BAHAYA: return ApplicationColors.STATUS_BAHAYA_COLOR;
             default: return ApplicationColors.STATUS_OPTIMAL_COLOR;
@@ -50,11 +48,9 @@ public class SensorCard extends Widget {
     }
 
     public Image getStatusFrame() {
-        if (displayItem == null) {
-            return Image.getImage(Images.OPTIMAL_ALERT_FRAME_L);
-        }
+        if (this.displayItem == null) return Image.getImage(Images.OPTIMAL_ALERT_FRAME_L);
 
-        switch (displayItem.getSensorStatus()) {
+        switch (this.displayItem.getSensorStatus()) {
             case WASPADA: return Image.getImage(Images.WASPADA_ALERT_FRAME_L);
             case BAHAYA: return Image.getImage(Images.BAHAYA_ALERT_FRAME_L);
             default: return Image.getImage(Images.OPTIMAL_ALERT_FRAME_L);
@@ -72,20 +68,18 @@ public class SensorCard extends Widget {
         g.setColor(ApplicationColors.BACKGROUND);
         Painter.fillRectangle(g, 0, 0, contentWidth, contentHeight);
 
-        if (displayItem == null) {
-            return;
-        }
+        if (this.displayItem == null) return;
 
         Font titleFont = Fonts.jetbrainsMonoRegular10px();
         Font valueFont = Fonts.jetbrainsMonoBold24px();
         Font unitFont = Fonts.jetbrainsMonoBold14px();
         Font statusFont = Fonts.jetbrainsMonoRegular9px();
 
-        Image icon = displayItem.getDefinition().getIcon();
-        String title = displayItem.getDefinition().getTitle();
-        String unit = displayItem.getDefinition().getUnit();
-        String valueText = displayItem.getFormattedValue();
-        SensorStatus status = displayItem.getSensorStatus();
+        Image icon = this.displayItem.getDefinition().getIcon();
+        String title = this.displayItem.getDefinition().getTitle();
+        String unit = this.displayItem.getDefinition().getUnit();
+        String valueText = this.displayItem.getFormattedValue();
+        SensorStatus status = this.displayItem.getSensorStatus();
 
         int imageX = (contentWidth - this.sensorCardFrame.getWidth()) / 2;
         int imageY = (contentHeight - this.sensorCardFrame.getHeight()) / 2;
@@ -107,13 +101,11 @@ public class SensorCard extends Widget {
         g.setColor(ApplicationColors.SECONDARY_COLOR);
         Painter.drawString(g, valueText, valueFont, valueX, valueY);
 
-        if (unit != null && !unit.isEmpty()) {
+        if (this.displayItem.isAvailable() && unit != null && !unit.isEmpty()) {
             int valueWidth = valueFont.stringWidth(valueText);
             int unitX = valueX + valueWidth;
-
             int valueBaselineY = valueY + valueFont.getBaselinePosition();
             int unitY = valueBaselineY - unitFont.getBaselinePosition();
-
             g.setColor(ApplicationColors.SECONDARY_COLOR);
             Painter.drawString(g, unit, unitFont, unitX, unitY);
         }
@@ -123,13 +115,13 @@ public class SensorCard extends Widget {
         int statusHeight = statusFrame.getHeight();
         int statusX = iconX + icon.getWidth() + 7;
         int statusY = valueY + valueFont.getHeight() + VALUE_TO_STATUS_GAP;
-        Painter.drawImage(g, statusFrame, statusX, statusY);
-
-        String statusText = status.name();
+        String statusText = this.displayItem.isAvailable() ? status.name() : "-";
         int statusTextWidth = statusFont.stringWidth(statusText);
         int statusTextX = statusX + ((statusWidth - statusTextWidth) / 2);
         int statusTextY = statusY + ((statusHeight - statusFont.getHeight()) / 2) + 1;
-        g.setColor(getStatusColor());
+
+        if (this.displayItem.isAvailable()) Painter.drawImage(g, statusFrame, statusX, statusY);
+        g.setColor(this.displayItem.isAvailable() ? getStatusColor() : ApplicationColors.SECONDARY_COLOR);
         Painter.drawString(g, statusText, statusFont, statusTextX, statusTextY);
     }
 }

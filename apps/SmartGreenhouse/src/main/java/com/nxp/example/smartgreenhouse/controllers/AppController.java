@@ -1,6 +1,7 @@
 package com.nxp.example.smartgreenhouse.controllers;
 
 import com.nxp.example.smartgreenhouse.models.actuator.ActuatorDataStore;
+import com.nxp.example.smartgreenhouse.models.sensor.SensorData;
 import com.nxp.example.smartgreenhouse.models.sensor.SensorDataStore;
 import com.nxp.example.smartgreenhouse.models.sensor.SensorHistoryStore;
 import com.nxp.example.smartgreenhouse.services.lora.LoRaHardwareService;
@@ -34,6 +35,7 @@ public class AppController {
 
         AppState appState = new AppState();
         SensorDataStore sensorDataStore = new SensorDataStore();
+        initializeSensorPlaceholders(sensorDataStore);
 
         this.sensorHistoryStore = new SensorHistoryStore();
         this.actuatorDataStore = new ActuatorDataStore();
@@ -96,9 +98,18 @@ public class AppController {
         return this.mainPage;
     }
 
+    private void initializeSensorPlaceholders(SensorDataStore sensorDataStore) {
+        SensorData tray1 = new SensorData(1, 1);
+        SensorData tray2 = new SensorData(2, 1);
+        tray1.setAvailable(false);
+        tray2.setAvailable(false);
+        sensorDataStore.replaceAll(new SensorData[]{tray1, tray2});
+    }
+
     public void start() {
         this.headerController.init();
         this.overviewController.init();
+        this.overviewController.refresh();
         this.menuController.init();
         this.sensorDetailController.init();
         this.actuatorDetailController.init();

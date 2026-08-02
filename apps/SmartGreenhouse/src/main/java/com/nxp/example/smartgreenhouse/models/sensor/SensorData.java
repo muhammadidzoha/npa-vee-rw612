@@ -13,10 +13,12 @@ public final class SensorData {
     private float at;
     private float ah;
     private float lux;
+    private boolean available;
 
     public SensorData(int nodeId, int targetId) {
         this.nodeId = nodeId;
         this.targetId = targetId;
+        this.available = true;
     }
 
     public int getNodeId() {
@@ -25,6 +27,14 @@ public final class SensorData {
 
     public int getTargetId() {
         return targetId;
+    }
+
+    public boolean isAvailable() {
+        return this.available;
+    }
+
+    public void setAvailable(boolean available) {
+        this.available = available;
     }
 
     public float getN() {

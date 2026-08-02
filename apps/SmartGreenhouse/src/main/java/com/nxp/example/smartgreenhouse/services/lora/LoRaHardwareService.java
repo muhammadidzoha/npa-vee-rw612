@@ -8,6 +8,8 @@ import com.nxp.example.smartgreenhouse.models.sensor.SensorHistoryEntry;
 import com.nxp.example.smartgreenhouse.models.sensor.SensorHistoryStore;
 import com.nxp.example.smartgreenhouse.utils.Time;
 
+import ej.bon.Util;
+
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -25,85 +27,53 @@ public final class LoRaHardwareService {
     private int lastSequence;
 
     public LoRaHardwareService(SensorDataStore sensorDataStore, SensorHistoryStore sensorHistoryStore, OverviewController overviewController, SensorDetailController sensorDetailController) {
-        if (sensorDataStore == null) {
-            throw new NullPointerException("sensorDataStore tidak boleh null.");
-        }
-
-        if (sensorHistoryStore == null) {
-            throw new NullPointerException("sensorHistoryStore tidak boleh null.");
-        }
-
-        if (overviewController == null) {
-            throw new NullPointerException("overviewController tidak boleh null.");
-        }
-
-        if (sensorDetailController == null) {
-            throw new NullPointerException("sensorDetailController tidak boleh null.");
-        }
+        if (sensorDataStore == null) throw new NullPointerException("sensorDataStore tidak boleh null.");
+        if (sensorHistoryStore == null) throw new NullPointerException("sensorHistoryStore tidak boleh null.");
+        if (overviewController == null) throw new NullPointerException("overviewController tidak boleh null.");
+        if (sensorDetailController == null) throw new NullPointerException("sensorDetailController tidak boleh null.");
 
         this.sensorDataStore = sensorDataStore;
-
         this.sensorHistoryStore = sensorHistoryStore;
-
         this.overviewController = overviewController;
-
         this.sensorDetailController = sensorDetailController;
-
         this.snapshot = new int[LoRaNative.SNAPSHOT_SIZE];
-
         this.lastSequence = -1;
     }
 
     public void poll() {
         boolean dataAvailable = LoRaNative.readLatest(this.snapshot);
 
-        if (!dataAvailable) {
-            return;
-        }
+        if (!dataAvailable) return;
 
         int sequence = this.snapshot[LoRaNative.INDEX_SEQUENCE];
 
-        if (sequence == this.lastSequence) {
-            return;
-        }
+        if (sequence == this.lastSequence) return;
 
         this.lastSequence = sequence;
 
         SensorData sensorData = createSensorData(this.snapshot);
 
         this.sensorDataStore.upsert(sensorData);
-
         addHistory(sensorData);
-
         this.overviewController.refresh();
-
         this.sensorDetailController.refreshIfOpen();
 
-        LOGGER.log(Level.INFO,
+        LOGGER.log(
+                Level.INFO,
                 "LoRa data applied"
-                        + " | sequence="
-                        + sequence
-                        + " | nodeId="
-                        + sensorData.getNodeId()
-                        + " | targetId="
-                        + sensorData.getTargetId()
-                        + " | N="
-                        + sensorData.getN()
-                        + " | P="
-                        + sensorData.getP()
-                        + " | K="
-                        + sensorData.getK()
-                        + " | RSSI="
-                        + this.snapshot[
-                        LoRaNative.INDEX_RSSI
-                        ]
+                        + " | sequence=" + sequence
+                        + " | nodeId=" + sensorData.getNodeId()
+                        + " | targetId=" + sensorData.getTargetId()
+                        + " | N=" + sensorData.getN()
+                        + " | P=" + sensorData.getP()
+                        + " | K=" + sensorData.getK()
+                        + " | RSSI=" + this.snapshot[LoRaNative.INDEX_RSSI]
                         + " dBm"
         );
     }
 
     private SensorData createSensorData(int[] source) {
         int nodeId = source[LoRaNative.INDEX_NODE_ID];
-
         int nodeTarget = source[LoRaNative.INDEX_NODE_TARGET];
 
         SensorData data = new SensorData(nodeId, nodeTarget);
@@ -123,9 +93,10 @@ public final class LoRaHardwareService {
     }
 
     private void addHistory(SensorData sensorData) {
-        String currentTime = Time.formatCurrentTime();
-        SensorHistoryEntry historyEntry = new SensorHistoryEntry(currentTime, currentTime, sensorData);
-
+        long receivedTimestamp = Util.currentTimeMillis();
+        String shortTime = Time.formatJakartaTime(receivedTimestamp);
+        String fullTime = Time.formatJakartaDateTime(receivedTimestamp);
+        SensorHistoryEntry historyEntry = new SensorHistoryEntry(shortTime, fullTime, sensorData);
         this.sensorHistoryStore.add(historyEntry);
     }
 }

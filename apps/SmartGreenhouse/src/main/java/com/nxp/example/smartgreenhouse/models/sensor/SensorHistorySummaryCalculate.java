@@ -2,13 +2,10 @@ package com.nxp.example.smartgreenhouse.models.sensor;
 
 public final class SensorHistorySummaryCalculate {
 
-    private SensorHistorySummaryCalculate() {
-    }
+    private SensorHistorySummaryCalculate() {}
 
     public static SensorHistorySummary calculate(SensorHistoryEntry[] entries, SensorDefinition definition) {
-        if (entries == null || entries.length == 0 || definition == null) {
-            return SensorHistorySummary.empty();
-        }
+        if (entries == null || entries.length == 0 || definition == null) return SensorHistorySummary.empty();
 
         boolean found = false;
 
@@ -20,12 +17,9 @@ public final class SensorHistorySummaryCalculate {
         String lastUpdate = "";
 
         for (SensorHistoryEntry entry : entries) {
-            if (entry == null || entry.getSensorData() == null) {
-                continue;
-            }
+            if (entry == null || entry.getSensorData() == null) continue;
 
             SensorDisplayItem displayItem = SensorDisplayBuilder.build(definition, entry.getSensorData());
-
             float value = displayItem.getValue();
 
             if (!found) {
@@ -33,27 +27,21 @@ public final class SensorHistorySummaryCalculate {
                 maximum = value;
                 found = true;
             } else {
-                if (value < minimum) {
-                    minimum = value;
-                }
-                if (value > maximum) {
-                    maximum = value;
-                }
+                if (value < minimum) minimum = value;
+                if (value > maximum) maximum = value;
             }
 
             total += value;
             validCount++;
 
-            if (entry.getShortTime() != null && !entry.getShortTime().isEmpty()) {
-                lastUpdate = entry.getShortTime();
-            } else {
+            if (entry.getFullTime() != null && !entry.getFullTime().isEmpty()) {
                 lastUpdate = entry.getFullTime();
+            } else {
+                lastUpdate = entry.getShortTime();
             }
         }
 
-        if (!found || validCount == 0) {
-            return SensorHistorySummary.empty();
-        }
+        if (!found || validCount == 0) return SensorHistorySummary.empty();
 
         return new SensorHistorySummary(true, minimum, maximum, total / validCount, lastUpdate);
     }

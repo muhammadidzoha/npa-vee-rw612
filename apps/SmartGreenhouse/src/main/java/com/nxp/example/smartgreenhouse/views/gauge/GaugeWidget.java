@@ -65,7 +65,6 @@ public class GaugeWidget extends Widget {
         this.item = item;
         this.minValue = minValue;
         this.maxValue = maxValue;
-
         requestRender();
     }
 
@@ -85,9 +84,7 @@ public class GaugeWidget extends Widget {
         g.setColor(ApplicationColors.BACKGROUND);
         Painter.fillRectangle(g, 0, 0, contentWidth, contentHeight);
 
-        if (this.item == null) {
-            return;
-        }
+        if (this.item == null) return;
 
         int offsetX = (contentWidth - WIDGET_WIDTH) / 2;
         int offsetY = (contentHeight - WIDGET_HEIGHT) / 2;
@@ -101,44 +98,30 @@ public class GaugeWidget extends Widget {
 
     private void drawGaugeBackground(GraphicsContext g, int offsetX, int offsetY) {
         g.setColor(ApplicationColors.ARC_BACKGROUND_COLOR);
-
         ShapePainter.drawThickFadedCircleArc(g, offsetX + ARC_X, offsetY + ARC_Y, ARC_DIAMETER, ARC_START, ARC_ANGLE, ARC_THICKNESS, ARC_FADE, Cap.ROUNDED, Cap.ROUNDED);
     }
 
     private void drawGaugeProgress(GraphicsContext g, int offsetX, int offsetY) {
         double progress = computeProgress();
-
-        if (progress <= 0) {
-            return;
-        }
+        if (progress <= 0) return;
 
         int totalProgressAngle = (int) Math.round(ARC_ANGLE * progress);
-
-        if (totalProgressAngle == 0) {
-            return;
-        }
+        if (totalProgressAngle == 0) return;
 
         int segmentCount = GRADIENT_SEGMENT_COUNT;
         int absoluteAngle = abs(totalProgressAngle);
 
-        if (absoluteAngle < segmentCount) {
-            segmentCount = absoluteAngle;
-        }
-
-        if (segmentCount <= 0) {
-            return;
-        }
+        if (absoluteAngle < segmentCount) segmentCount = absoluteAngle;
+        if (segmentCount <= 0) return;
 
         int drawnAngle = 0;
 
         for (int i = 0; i < segmentCount; i++) {
             int remainingSegments = segmentCount - i;
-
             int remainingAngle = totalProgressAngle - drawnAngle;
-
             int segmentAngle = remainingAngle / remainingSegments;
 
-            if (segmentAngle == 0) {segmentAngle = totalProgressAngle < 0 ? -1 : 1;}
+            if (segmentAngle == 0) segmentAngle = totalProgressAngle < 0 ? -1 : 1;
 
             double ratio;
 
@@ -149,53 +132,32 @@ public class GaugeWidget extends Widget {
             }
 
             int color = interpolateColor(ratio);
-
             int segmentStart = ARC_START + drawnAngle;
-
             Cap startCap = i == 0 ? Cap.ROUNDED : Cap.NONE;
-
             Cap endCap = i == segmentCount - 1 ? Cap.ROUNDED : Cap.NONE;
 
             g.setColor(color);
-
             ShapePainter.drawThickFadedCircleArc(g, offsetX + ARC_X, offsetY + ARC_Y, ARC_DIAMETER, segmentStart, segmentAngle, ARC_THICKNESS, ARC_FADE, startCap, endCap);
-
             drawnAngle += segmentAngle;
         }
     }
 
     private double computeProgress() {
-        if (this.item == null) {
-            return 0;
-        }
-
-        if (this.maxValue <= this.minValue) {
-            return 0;
-        }
+        if (this.item == null || !this.item.isAvailable()) return 0;
+        if (this.maxValue <= this.minValue) return 0;
 
         double value = this.item.getValue();
-
         double progress = (value - this.minValue) / (this.maxValue - this.minValue);
 
-        if (progress < 0) {
-            return 0;
-        }
-
-        if (progress > 1) {
-            return 1;
-        }
+        if (progress < 0) return 0;
+        if (progress > 1) return 1;
 
         return progress;
     }
 
     private int interpolateColor(double ratio) {
-        if (ratio < 0) {
-            ratio = 0;
-        }
-
-        if (ratio > 1) {
-            ratio = 1;
-        }
+        if (ratio < 0) ratio = 0;
+        if (ratio > 1) ratio = 1;
 
         int startR = (ApplicationColors.ARC_PROGRESS_START_COLOR >> 16) & 0xFF;
         int startG = (ApplicationColors.ARC_PROGRESS_START_COLOR >> 8) & 0xFF;
@@ -206,9 +168,7 @@ public class GaugeWidget extends Widget {
         int endB = ApplicationColors.ARC_PROGRESS_END_COLOR & 0xFF;
 
         int resultR = startR + (int) Math.round((endR - startR) * ratio);
-
         int resultG = startG + (int) Math.round((endG - startG) * ratio);
-
         int resultB = startB + (int) Math.round((endB - startB) * ratio);
 
         return (resultR << 16) | (resultG << 8) | resultB;
@@ -216,17 +176,13 @@ public class GaugeWidget extends Widget {
 
     private void drawSensorIcon(GraphicsContext g, int offsetX, int offsetY) {
         Image icon = this.item.getDefinition().getIcon();
-
         int iconX = offsetX + ((WIDGET_WIDTH - icon.getWidth()) / 2);
-
         int iconY = offsetY + ICON_TOP;
-
         Painter.drawImage(g, icon, iconX, iconY);
     }
 
     private void drawSensorValue(GraphicsContext g, int offsetX, int offsetY) {
         int sensorId = this.item.getDefinition().getSensorId();
-
         Font valueFont = getValueFont(sensorId);
         Font unitFont = Fonts.jetbrainsMonoBold12px();
 
@@ -234,17 +190,17 @@ public class GaugeWidget extends Widget {
         String unit = this.item.getDefinition().getUnit();
         int valueWidth = valueFont.stringWidth(valueText);
         int unitWidth = 0;
-        if (unit != null && !unit.isEmpty()) {
-            unitWidth = UNIT_GAP + unitFont.stringWidth(unit);
-        }
+
+        if (this.item.isAvailable() && unit != null && !unit.isEmpty()) unitWidth = UNIT_GAP + unitFont.stringWidth(unit);
 
         int totalWidth = valueWidth + unitWidth;
         int valueX = offsetX + ((WIDGET_WIDTH - totalWidth) / 2);
         int valueY = offsetY + VALUE_CENTER_Y - (valueFont.getHeight() / 2) + 7;
+
         g.setColor(ApplicationColors.SECONDARY_COLOR);
         Painter.drawString(g, valueText, valueFont, valueX, valueY);
 
-        if (unit != null && !unit.isEmpty()) {
+        if (this.item.isAvailable() && unit != null && !unit.isEmpty()) {
             int unitX = valueX + valueWidth + UNIT_GAP;
             int valueBaselineY = valueY + valueFont.getBaselinePosition();
             int unitY = valueBaselineY - unitFont.getBaselinePosition();
@@ -253,28 +209,26 @@ public class GaugeWidget extends Widget {
     }
 
     private Font getValueFont(int sensorId) {
-        if (sensorId == SensorId.INTENSITAS_CAHAYA) {
-            return Fonts.jetbrainsMonoBold12px();
-        }
+        if (sensorId == SensorId.INTENSITAS_CAHAYA) return Fonts.jetbrainsMonoBold12px();
         return Fonts.jetbrainsMonoBold16px();
     }
 
     private void drawSensorStatus(GraphicsContext g, int offsetX, int offsetY) {
         SensorStatus sensorStatus = this.item.getSensorStatus();
-
         Image statusImage = getStatusImage(sensorStatus);
         Font statusFont = Fonts.jetbrainsMonoRegular9px();
-        String statusText = sensorStatus.name();
+        String statusText = this.item.isAvailable() ? sensorStatus.name() : "-";
 
         int arcCenterX = offsetX + ARC_X + ((ARC_DIAMETER + 1) / 2);
         int statusX = arcCenterX - (statusImage.getWidth() / 2);
         int statusY = offsetY + STATUS_TOP;
-        Painter.drawImage(g, statusImage, statusX, statusY);
-
         int statusTextWidth = statusFont.stringWidth(statusText);
         int statusTextX = statusX + ((statusImage.getWidth() - statusTextWidth) / 2) + STATUS_TEXT_OFFSET_X;
         int statusTextY = statusY + ((statusImage.getHeight() - statusFont.getHeight()) / 2) + STATUS_TEXT_OFFSET_Y;
-        g.setColor(getStatusColor(sensorStatus));
+
+        if (this.item.isAvailable()) Painter.drawImage(g, statusImage, statusX, statusY);
+
+        g.setColor(this.item.isAvailable() ? getStatusColor(sensorStatus) : ApplicationColors.SECONDARY_COLOR);
         Painter.drawString(g, statusText, statusFont, statusTextX, statusTextY);
     }
 

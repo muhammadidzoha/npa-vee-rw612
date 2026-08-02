@@ -1,7 +1,5 @@
 package com.nxp.example.smartgreenhouse.models.sensor;
 
-import ej.bon.Util;
-
 public final class SensorHistoryStore {
 
     public static final int DEFAULT_MAX_POINTS_PER_NODE = 8;
@@ -21,16 +19,13 @@ public final class SensorHistoryStore {
     }
 
     public void add(SensorHistoryEntry entry) {
-        if (entry == null || entry.getNodeId() < 0 || entry.getSensorData() == null) return;
+        if (entry == null || entry.getNodeId() < 0) return;
 
-        long receivedTimestamp = Util.currentTimeMillis();
-        SensorHistoryEntry timestampedEntry = new SensorHistoryEntry(receivedTimestamp, entry.getSensorData());
+        NodeHistory nodeHistory = findNodeHistory(entry.getNodeId());
 
-        NodeHistory nodeHistory = findNodeHistory(timestampedEntry.getNodeId());
+        if (nodeHistory == null) nodeHistory = createNodeHistory(entry.getNodeId());
 
-        if (nodeHistory == null) nodeHistory = createNodeHistory(timestampedEntry.getNodeId());
-
-        nodeHistory.add(timestampedEntry);
+        nodeHistory.add(entry);
     }
 
     public void addAll(SensorHistoryEntry[] entries) {
@@ -41,9 +36,7 @@ public final class SensorHistoryStore {
 
     public SensorHistoryEntry[] getByNodeId(int nodeId) {
         NodeHistory nodeHistory = findNodeHistory(nodeId);
-
         if (nodeHistory == null) return new SensorHistoryEntry[0];
-
         return nodeHistory.toArray();
     }
 
