@@ -315,27 +315,27 @@ public class MainPage extends Container {
             mainContentHeight = 0;
         }
 
-        layOutChild(this.headerOverview, 0, 0, contentWidth, headerHeight);
+        layOutChild(this.headerOverview, 0, 0, contentWidth, headerHeight + 2);
 
         int trayLabelHeight = this.trayLabel.getTrayLabelHeight();
         int gapHeaderToTray = 2;
         int trayY = headerHeight + gapHeaderToTray;
 
-        layOutChild(this.trayLabel, 0, trayY, contentWidth, trayLabelHeight);
+        layOutChild(this.trayLabel, 0, trayY, contentWidth, trayLabelHeight + 1);
 
         int overviewWidth = 465;
         int overviewHeight = 202;
         int overviewX = (contentWidth - overviewWidth) / 2;
         int overviewY = headerHeight + ((mainContentHeight - overviewHeight) / 2) - 1;
 
-        layOutChild(this.overview, overviewX, overviewY, overviewWidth, overviewHeight);
+        layOutChild(this.overview, overviewX, overviewY, overviewWidth, overviewHeight + 2);
 
         int footerY = contentHeight - footerHeight;
         int indicatorHeight = this.indicator.getIndicatorHeight();
         int gapIndicatorToFooter = 12;
         int indicatorY = footerY - indicatorHeight - gapIndicatorToFooter;
 
-        layOutChild(this.indicator, 0, indicatorY, contentWidth, indicatorHeight);
+        layOutChild(this.indicator, 0, indicatorY, contentWidth, indicatorHeight + 13);
         layOutChild(this.footerOverview, 0, footerY, contentWidth, footerHeight);
 
         int menuWidth = this.menuContainer.getMenuWidth();
