@@ -17,6 +17,8 @@ public final class WifiHardwareService {
     private static final String PROVISIONING_SSID = "smartgreenhouse";
     private static final String PROVISIONING_PASSWORD = "smartgreenhouse";
     private static final int MAX_PROVISIONING_NETWORKS = 12;
+    private static final int PROVISIONING_SCAN_MAX_ATTEMPTS = 3;
+    private static final long PROVISIONING_SCAN_RETRY_DELAY_MS = 1000L;
 
     private final WifiManager wifiManager;
 
@@ -112,14 +114,29 @@ public final class WifiHardwareService {
         stopProvisioningAccessPoint();
         disconnectCurrentNetwork();
 
-        LOGGER.log(Level.INFO, "Provisioning WiFi scan started | active=false");
+        IOException lastException = null;
 
-        AccessPoint[] scannedAccessPoints = this.wifiManager.scan(false);
-        AccessPoint[] selectedAccessPoints = selectProvisioningNetworks(scannedAccessPoints);
+        for (int attempt = 1; attempt <= PROVISIONING_SCAN_MAX_ATTEMPTS; attempt++) {
+            try {
+                LOGGER.log(Level.INFO, "Provisioning WiFi scan started | active=false | attempt=" + attempt + "/" + PROVISIONING_SCAN_MAX_ATTEMPTS);
 
-        LOGGER.log(Level.INFO, "Provisioning WiFi scan completed | scanned=" + getAccessPointCount(scannedAccessPoints) + " | selected=" + selectedAccessPoints.length);
+                AccessPoint[] scannedAccessPoints = this.wifiManager.scan(false);
+                AccessPoint[] selectedAccessPoints = selectProvisioningNetworks(scannedAccessPoints);
 
-        return selectedAccessPoints;
+                LOGGER.log(Level.INFO, "Provisioning WiFi scan completed | attempt=" + attempt + " | scanned=" + getAccessPointCount(scannedAccessPoints) + " | selected=" + selectedAccessPoints.length);
+
+                return selectedAccessPoints;
+            } catch (IOException exception) {
+                lastException = exception;
+                LOGGER.log(Level.WARNING, "Provisioning WiFi scan failed | attempt=" + attempt + "/" + PROVISIONING_SCAN_MAX_ATTEMPTS + " | error=" + exception);
+
+                if (attempt < PROVISIONING_SCAN_MAX_ATTEMPTS) waitBeforeScanRetry();
+            }
+        }
+
+        if (lastException != null) throw lastException;
+
+        return new AccessPoint[0];
     }
 
     public synchronized void startProvisioningAccessPoint() throws IOException {
@@ -156,6 +173,14 @@ public final class WifiHardwareService {
 
     public synchronized boolean isProvisioningAccessPointEnabled() throws IOException {
         return this.wifiManager.isSoftAPEnabled();
+    }
+
+    private static void waitBeforeScanRetry() throws IOException {
+        try {
+            Thread.sleep(PROVISIONING_SCAN_RETRY_DELAY_MS);
+        } catch (InterruptedException exception) {
+            throw new IOException("WiFi scan retry interrupted.");
+        }
     }
 
     private static AccessPoint[] selectProvisioningNetworks(AccessPoint[] scannedAccessPoints) {
