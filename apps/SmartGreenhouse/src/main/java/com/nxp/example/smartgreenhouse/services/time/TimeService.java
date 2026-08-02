@@ -19,7 +19,7 @@ public final class TimeService {
     private static final String[] NTP_SERVERS = {"time.google.com", "0.pool.ntp.org"};
     private static final int NTP_TIMEOUT_MS = 5000;
 
-    private static final boolean FORCE_NTP_RESEED = true;
+    private static final boolean FORCE_NTP_RESEED = false;
 
     private final RtcService rtcService;
 
