@@ -14,6 +14,8 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import ej.bon.Util;
+
 public final class MqttSubscribeService {
 
     private static final Logger LOGGER = Logger.getLogger("[SMART GREENHOUSE: MQTT SUBSCRIBE SERVICE]");
@@ -551,7 +553,7 @@ public final class MqttSubscribeService {
             return;
         }
 
-        final long receivedTimestamp = System.currentTimeMillis();
+        final long receivedTimestamp = Util.currentTimeMillis();
 
         MicroUI.callSerially(
                 new Runnable() {

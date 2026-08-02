@@ -9,6 +9,8 @@ import com.nxp.example.smartgreenhouse.views.MainPage;
 import com.nxp.example.smartgreenhouse.views.actuator.ActuatorToggleListener;
 import com.nxp.example.smartgreenhouse.views.detail.ActuatorDetail;
 
+import ej.bon.Util;
+
 public class ActuatorDetailController implements ActuatorDetail.onBackListener, ActuatorToggleListener, HorizontalSwipeListener {
 
     private final MainPage mainPage;
@@ -148,7 +150,7 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
         this.pendingTargetState[valveId] = targetState;
         this.valveControlPending[valveId] = true;
 
-        valveData.updateState(targetState, System.currentTimeMillis());
+        valveData.updateState(targetState, Util.currentTimeMillis());
         refreshSelectedActuator();
 
         boolean queued = this.mqttSubscribeService.requestValveControl(valveId, targetState);
