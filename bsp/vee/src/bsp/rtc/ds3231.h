@@ -19,6 +19,11 @@ bool DS3231_Init(void);
 bool DS3231_TestCommunication(void);
 
 bool DS3231_ReadDateTime(ds3231_datetime_t *dateTime);
+bool DS3231_SetDateTime(const ds3231_datetime_t *dateTime);
+
+bool DS3231_IsTimeValid(void);
+bool DS3231_ClearOscillatorStopFlag(void);
+
 void DS3231_PrintDateTime(const ds3231_datetime_t *dateTime);
 
 #endif

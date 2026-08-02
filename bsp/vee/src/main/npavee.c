@@ -54,6 +54,8 @@
 #define nxp_pa_task_PRIORITY (configMAX_PRIORITIES - 6)
 #define rtc_test_task_PRIORITY (tskIDLE_PRIORITY + 1)
 
+#define RTC_FORCE_TEST_SET 1
+
 static void nxp_pa_task(void *pvParameters);
 static void rtc_test_task(void *pvParameters);
 
@@ -352,22 +354,22 @@ static void rtc_test_task(
     (void)pvParameters;
 
     /*
-     * Tunggu MicroJVM / UI start dahulu.
+     * Tunggu MicroJVM / UI berjalan dahulu.
      */
     vTaskDelay(
         pdMS_TO_TICKS(5000)
     );
 
     PRINTF(
-        "\r\n[RTC] =============================\r\n"
+        "\r\n[RTC] =====================================\r\n"
     );
 
     PRINTF(
-        "[RTC] Starting DS3231 date/time test\r\n"
+        "[RTC] Starting DS3231 write/persistence test\r\n"
     );
 
     PRINTF(
-        "[RTC] =============================\r\n"
+        "[RTC] =====================================\r\n"
     );
 
     /*
@@ -379,15 +381,12 @@ static void rtc_test_task(
             "[RTC] ERROR: DS3231 initialization failed.\r\n"
         );
 
-        vTaskDelete(
-            NULL
-        );
-
+        vTaskDelete(NULL);
         return;
     }
 
     /*
-     * Pertama pastikan device masih terdeteksi.
+     * Pastikan device masih tersedia.
      */
     PRINTF(
         "\r\n[RTC] TEST 1: Communication\r\n"
@@ -399,10 +398,7 @@ static void rtc_test_task(
             "[RTC] ERROR: Communication test failed.\r\n"
         );
 
-        vTaskDelete(
-            NULL
-        );
-
+        vTaskDelete(NULL);
         return;
     }
 
@@ -411,50 +407,174 @@ static void rtc_test_task(
     );
 
     /*
-     * Beri jeda sebelum melakukan rangkaian
-     * transaksi berikutnya.
-     */
-    vTaskDelay(
-        pdMS_TO_TICKS(1000)
-    );
-
-    /*
-     * Full date/time read.
+     * Cek kondisi OSF sebelum write.
      */
     PRINTF(
-        "\r\n[RTC] TEST 2: Full date/time read\r\n"
+        "\r\n[RTC] TEST 2: RTC validity before write\r\n"
     );
 
-    if (!DS3231_ReadDateTime(&rtcDateTime))
+    bool validBeforeWrite =
+        DS3231_IsTimeValid();
+
+    PRINTF(
+        "[RTC] RTC valid before write = %d\r\n",
+        validBeforeWrite ? 1 : 0
+    );
+
+#if RTC_FORCE_TEST_SET == 1
+
+    /*
+     * ==========================================================
+     * TEST SET
+     *
+     * Ini hanya digunakan untuk tahap pengujian.
+     *
+     * 1 = tulis waktu contoh ke DS3231.
+     * 0 = JANGAN menulis RTC pada boot.
+     *
+     * Setelah test write berhasil, ubah
+     * RTC_FORCE_TEST_SET menjadi 0.
+     * ==========================================================
+     */
+
+    PRINTF(
+        "\r\n[RTC] TEST 3: Writing test date/time\r\n"
+    );
+
+    rtcDateTime.year = 2026U;
+    rtcDateTime.month = 8U;
+    rtcDateTime.date = 2U;
+
+    /*
+     * Kita gunakan:
+     * 1 = Sunday
+     * 2 = Monday
+     * ...
+     * 7 = Saturday
+     *
+     * 2 Agustus 2026 = Sunday.
+     */
+    rtcDateTime.day = 1U;
+
+    rtcDateTime.hour = 12U;
+    rtcDateTime.minute = 0U;
+    rtcDateTime.second = 0U;
+
+    PRINTF(
+        "[RTC] Test value to write:\r\n"
+    );
+
+    DS3231_PrintDateTime(
+        &rtcDateTime
+    );
+
+    if (!DS3231_SetDateTime(
+            &rtcDateTime))
     {
         PRINTF(
-            "[RTC] ERROR: Full date/time read failed.\r\n"
+            "[RTC] ERROR: Date/time write failed.\r\n"
         );
 
-        vTaskDelete(
-            NULL
-        );
-
+        vTaskDelete(NULL);
         return;
     }
 
     PRINTF(
-        "[RTC] TEST 2 register reads PASSED\r\n"
+        "[RTC] TEST 3 PASSED\r\n"
     );
 
     /*
-     * Print hasil akhirnya.
+     * Tunggu 3 detik.
+     * Setelah itu RTC seharusnya sudah sekitar 12:00:03.
      */
+    PRINTF(
+        "\r\n[RTC] Waiting 3 seconds...\r\n"
+    );
+
+    vTaskDelay(
+        pdMS_TO_TICKS(3000)
+    );
+
+#else
+
+    PRINTF(
+        "\r\n[RTC] RTC_FORCE_TEST_SET = 0\r\n"
+    );
+
+    PRINTF(
+        "[RTC] RTC will NOT be overwritten on this boot.\r\n"
+    );
+
+#endif
+
+    /*
+     * Baca RTC.
+     */
+    PRINTF(
+        "\r\n[RTC] TEST 4: Reading date/time\r\n"
+    );
+
+    if (!DS3231_ReadDateTime(
+            &rtcDateTime))
+    {
+        PRINTF(
+            "[RTC] ERROR: Unable to read date/time.\r\n"
+        );
+
+        vTaskDelete(NULL);
+        return;
+    }
+
     DS3231_PrintDateTime(
         &rtcDateTime
     );
 
     PRINTF(
-        "[RTC] Full date/time test PASSED.\r\n"
+        "[RTC] TEST 4 PASSED\r\n"
+    );
+
+    /*
+     * Cek OSF setelah write.
+     */
+    PRINTF(
+        "\r\n[RTC] TEST 5: RTC validity after write\r\n"
+    );
+
+    if (DS3231_IsTimeValid())
+    {
+        PRINTF(
+            "[RTC] TEST 5 PASSED | RTC is VALID\r\n"
+        );
+    }
+    else
+    {
+        PRINTF(
+            "[RTC] TEST 5 FAILED | RTC is INVALID\r\n"
+        );
+    }
+
+    PRINTF(
+        "\r\n[RTC] =====================================\r\n"
     );
 
     PRINTF(
-        "[RTC] RTC task finished.\r\n"
+        "[RTC] RTC test completed\r\n"
+    );
+
+#if RTC_FORCE_TEST_SET == 1
+
+    PRINTF(
+        "[RTC] IMPORTANT: Change RTC_FORCE_TEST_SET to 0\r\n"
+    );
+
+    PRINTF(
+        "[RTC] before performing the power-off persistence test.\r\n"
+    );
+
+#endif
+
+    PRINTF(
+        "[RTC] =====================================\r\n"
     );
 
     vTaskDelete(
