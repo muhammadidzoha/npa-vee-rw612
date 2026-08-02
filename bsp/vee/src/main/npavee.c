@@ -108,22 +108,17 @@ int main(void)
 
         PRINTF("[RTC] DS3231 hardware test PASSED.\r\n");
 
-        if (DS3231_IsTimeValid())
-        {
-            PRINTF("[RTC] RTC time status = VALID\r\n");
-        }
-        else
-        {
-            PRINTF("[RTC] RTC time status = INVALID\r\n");
-        }
+        PRINTF("[RTC] Starting full date/time read...\r\n");
 
         if (DS3231_ReadDateTime(&rtcDateTime))
         {
             DS3231_PrintDateTime(&rtcDateTime);
+
+            PRINTF("[RTC] Full date/time test PASSED.\r\n");
         }
         else
         {
-            PRINTF("[RTC] ERROR: Unable to read complete date/time.\r\n");
+            PRINTF("[RTC] ERROR: Full date/time read failed.\r\n");
         }
     }
 
