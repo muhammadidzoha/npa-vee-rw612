@@ -75,7 +75,7 @@ public class AppController {
                 new Runnable() {
                     @Override
                     public void run() {
-                        LOGGER.log(Level.INFO, "WiFi connected | checking RTC/NTP time state");
+                        LOGGER.log(Level.INFO, "WiFi connected | checking time service state");
 
                         try {
                             boolean timeReady = AppController.this.headerController.synchronizeTime();
