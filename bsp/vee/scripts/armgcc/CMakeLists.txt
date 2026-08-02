@@ -74,6 +74,7 @@ add_executable(${MCUX_SDK_PROJECT_NAME}
 
     "${MicroEjRootDirPath}/src/bsp/rtc/ds3231.c"
     "${MicroEjRootDirPath}/src/bsp/rtc/ds3231.h"
+    "${MicroEjRootDirPath}/src/bsp/rtc/rtc_native.c"
 
     "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_storage.c"
     "${MicroEjRootDirPath}/src/bsp/wifi/wifi_credential_storage.h"

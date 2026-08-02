@@ -6,6 +6,7 @@ import com.nxp.example.smartgreenhouse.services.wifi.WifiProvisioningService;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
 import com.nxp.example.smartgreenhouse.views.wifi.WifiProvisioningModal;
+import com.nxp.example.smartgreenhouse.services.rtc.RtcService;
 
 import ej.microui.MicroUI;
 
@@ -19,6 +20,7 @@ public class HeaderController {
     private final MainPage mainPage;
     private final TimeService timeService;
     private final WifiProvisioningService wifiProvisioningService;
+    private final RtcService rtcService;
 
     private Runnable periodicTask;
     private Runnable wifiConnectedTask;
@@ -33,6 +35,7 @@ public class HeaderController {
 
         this.mainPage = mainPage;
         this.timeService = new TimeService();
+        this.rtcService = new RtcService();
 
         this.wifiProvisioningService = new WifiProvisioningService(
                 new WifiProvisioningService.Listener() {
@@ -118,6 +121,7 @@ public class HeaderController {
         registerWifiClickListener();
         registerWifiProvisioningBackListener();
         startClock();
+        this.rtcService.startBridgeSmokeTest();
         this.wifiProvisioningService.tryAutoConnect();
     }
 
