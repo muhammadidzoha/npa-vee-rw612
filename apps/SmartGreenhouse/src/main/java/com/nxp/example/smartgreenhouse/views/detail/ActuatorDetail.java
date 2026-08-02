@@ -542,13 +542,12 @@ public class ActuatorDetail extends Container {
         Painter.drawString(g, "TERAKHIR DIPERBARUI", this.fonts.updateFont, frameX + UPDATE_HORIZONTAL_PADDING, textY);
 
         String updateText = "-";
-        if (this.actuatorItem != null && this.actuatorItem.isDataAvailable()) {
-            String updateDate = this.actuatorItem.getLastUpdatedDateText();
-            String updateTime = this.actuatorItem.getLastUpdatedTimeText();
-            updateText = updateDate + " | " + updateTime;
-        }
-        int timeWidth = this.fonts.updateFont.stringWidth(updateText);
 
+        if (this.actuatorItem != null && this.actuatorItem.isDataAvailable()) {
+            updateText = this.actuatorItem.getLastUpdatedTimeText();
+        }
+
+        int timeWidth = this.fonts.updateFont.stringWidth(updateText);
         int timeX = frameX + this.images.optimalFrame.getWidth() - UPDATE_HORIZONTAL_PADDING - timeWidth;
 
         Painter.drawString(g, updateText, this.fonts.updateFont, timeX, textY);
