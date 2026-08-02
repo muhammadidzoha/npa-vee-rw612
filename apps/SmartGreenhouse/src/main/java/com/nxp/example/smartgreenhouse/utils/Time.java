@@ -8,7 +8,6 @@ import java.util.TimeZone;
 public final class Time {
 
     private static final long JAKARTA_OFFSET_MILLIS = 7L * 60L * 60L * 1000L;
-
     private static final Calendar UTC_CALENDAR = Calendar.getInstance(TimeZone.getTimeZone("GMT"));
 
     private Time() {}

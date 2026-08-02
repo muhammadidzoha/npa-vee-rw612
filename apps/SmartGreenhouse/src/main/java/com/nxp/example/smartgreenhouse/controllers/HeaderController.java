@@ -6,7 +6,6 @@ import com.nxp.example.smartgreenhouse.services.wifi.WifiProvisioningService;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
 import com.nxp.example.smartgreenhouse.views.wifi.WifiProvisioningModal;
-import com.nxp.example.smartgreenhouse.services.rtc.RtcService;
 
 import ej.microui.MicroUI;
 
@@ -20,7 +19,6 @@ public class HeaderController {
     private final MainPage mainPage;
     private final TimeService timeService;
     private final WifiProvisioningService wifiProvisioningService;
-    private final RtcService rtcService;
 
     private Runnable periodicTask;
     private Runnable wifiConnectedTask;
@@ -35,7 +33,6 @@ public class HeaderController {
 
         this.mainPage = mainPage;
         this.timeService = new TimeService();
-        this.rtcService = new RtcService();
 
         this.wifiProvisioningService = new WifiProvisioningService(
                 new WifiProvisioningService.Listener() {
@@ -43,16 +40,20 @@ public class HeaderController {
                     public void onStateChanged(int state) {
                         LOGGER.log(Level.INFO, "WiFi provisioning state changed | state=" + state);
                     }
+
                     @Override
                     public void onWifiConnectionStatusChanged(final boolean connected) {
                         HeaderController.this.updateWifiConnectionStatus(connected);
                     }
+
                     @Override
                     public void onProvisioningReady(final String ssid, final String password, final String portalUrl, final int networkCount) {
                         LOGGER.log(Level.INFO, "WiFi provisioning ready | SSID=" + ssid + " | portal=" + portalUrl + " | networkCount=" + networkCount);
+
                         if (!HeaderController.this.wifiProvisioningUiActive) {
                             return;
                         }
+
                         MicroUI.callSerially(
                                 new Runnable() {
                                     @Override
@@ -62,12 +63,15 @@ public class HeaderController {
                                 }
                         );
                     }
+
                     @Override
                     public void onConnecting(final String ssid) {
                         LOGGER.log(Level.INFO, "WiFi connecting | SSID=" + ssid);
+
                         if (!HeaderController.this.wifiProvisioningUiActive) {
                             return;
                         }
+
                         MicroUI.callSerially(
                                 new Runnable() {
                                     @Override
@@ -77,11 +81,14 @@ public class HeaderController {
                                 }
                         );
                     }
+
                     @Override
                     public void onConnected(String ssid) {
                         LOGGER.log(Level.INFO, "WiFi connected | SSID=" + ssid);
+
                         if (HeaderController.this.wifiProvisioningUiActive) {
                             HeaderController.this.wifiProvisioningUiActive = false;
+
                             MicroUI.callSerially(
                                     new Runnable() {
                                         @Override
@@ -91,14 +98,18 @@ public class HeaderController {
                                     }
                             );
                         }
+
                         HeaderController.this.runWifiConnectedTask();
                     }
+
                     @Override
                     public void onFailed(String message) {
                         LOGGER.log(Level.WARNING, "WiFi process failed | message=" + message);
+
                         if (!HeaderController.this.wifiProvisioningUiActive) {
                             return;
                         }
+
                         MicroUI.callSerially(
                                 new Runnable() {
                                     @Override
@@ -110,6 +121,7 @@ public class HeaderController {
                     }
                 }
         );
+
         this.periodicTask = null;
         this.wifiConnectedTask = null;
         this.wifiProvisioningStartedTask = null;
@@ -121,7 +133,6 @@ public class HeaderController {
         registerWifiClickListener();
         registerWifiProvisioningBackListener();
         startClock();
-        this.rtcService.startBridgeSmokeTest();
         this.wifiProvisioningService.tryAutoConnect();
     }
 

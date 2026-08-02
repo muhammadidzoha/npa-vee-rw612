@@ -75,18 +75,18 @@ public class AppController {
                 new Runnable() {
                     @Override
                     public void run() {
-                        LOGGER.log(Level.INFO, "WiFi connected | synchronizing time");
+                        LOGGER.log(Level.INFO, "WiFi connected | checking RTC/NTP time state");
 
                         try {
-                            boolean synchronizedTime = AppController.this.headerController.synchronizeTime();
+                            boolean timeReady = AppController.this.headerController.synchronizeTime();
 
-                            if (synchronizedTime) {
-                                LOGGER.log(Level.INFO, "NTP synchronization successful");
+                            if (timeReady) {
+                                LOGGER.log(Level.INFO, "Time service ready.");
                             } else {
-                                LOGGER.log(Level.WARNING, "NTP synchronization failed | MQTT will still be started");
+                                LOGGER.log(Level.WARNING, "Time service not synchronized | MQTT will still be started");
                             }
                         } catch (RuntimeException exception) {
-                            LOGGER.log(Level.WARNING, "NTP synchronization failed | MQTT will still be started | error=" + exception);
+                            LOGGER.log(Level.WARNING, "Time synchronization failed | MQTT will still be started | error=" + exception);
                         }
 
                         AppController.this.mqttSubscribeService.resumeAfterWifiProvisioning();
@@ -111,6 +111,7 @@ public class AppController {
 
     private void loadSensorData() {
         SensorData[] nodes = SampleSensorData.createSampleSensorData();
+
         this.overviewController.setSensorNodes(nodes);
         this.sensorHistoryStore.addAll(SampleSensorHistoryData.create());
     }
