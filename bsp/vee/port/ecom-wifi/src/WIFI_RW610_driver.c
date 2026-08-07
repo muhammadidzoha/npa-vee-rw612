@@ -18,6 +18,7 @@
 #include "dhcp-server.h"
 #include "lwip/inet.h"
 #include "event_groups.h"
+#include "task.h"
 
 #ifdef __cplusplus
 	extern "C" {
@@ -119,7 +120,7 @@
 #error "WIFI_RW610_SCAN_RESULT_LIMIT exceeds native scan buffer capacity"
 #endif
 
-#define WIFI_RW610_SYNC_TIMEOUT_MS portMAX_DELAY
+#define WIFI_RW610_SYNC_TIMEOUT_TICKS pdMS_TO_TICKS(30000U)
 
 /* IP Address of Wi-Fi interface in AP (Access Point) mode */
 #ifndef WIFI_RW610_WIFI_AP_IP_ADDR
@@ -134,15 +135,12 @@
 #define WIFI_RW610_SCAN_GROUP EVENT_BIT(EVENT_SCAN_DONE)
 #define WIFI_RW610_SYNC_UAP_START_GROUP EVENT_BIT(WLAN_REASON_UAP_SUCCESS) | EVENT_BIT(WLAN_REASON_UAP_START_FAILED)
 #define WIFI_RW610_SYNC_UAP_STOP_GROUP EVENT_BIT(WLAN_REASON_UAP_STOPPED) | EVENT_BIT(WLAN_REASON_UAP_STOP_FAILED)
+#define WIFI_RW610_SYNC_DISCONNECT_GROUP EVENT_BIT(WLAN_REASON_USER_DISCONNECT)
 #define WIFI_RW610_SYNC_CONNECT_GROUP                                                                  \
     EVENT_BIT(WLAN_REASON_SUCCESS) | EVENT_BIT(WLAN_REASON_CONNECT_FAILED) |                    \
         EVENT_BIT(WLAN_REASON_NETWORK_NOT_FOUND) | EVENT_BIT(WLAN_REASON_NETWORK_AUTH_FAILED) | \
         EVENT_BIT(WLAN_REASON_ADDRESS_FAILED)
 #define WIFI_RW610_SYNC_INIT_GROUP EVENT_BIT(WLAN_REASON_INITIALIZED) | EVENT_BIT(WLAN_REASON_INITIALIZATION_FAILED)
-#define WIFI_RW610_SYNC_CONNECT_GROUP                                                                  \
-    EVENT_BIT(WLAN_REASON_SUCCESS) | EVENT_BIT(WLAN_REASON_CONNECT_FAILED) |                    \
-        EVENT_BIT(WLAN_REASON_NETWORK_NOT_FOUND) | EVENT_BIT(WLAN_REASON_NETWORK_AUTH_FAILED) | \
-        EVENT_BIT(WLAN_REASON_ADDRESS_FAILED)
 
 /** @brief RW610 mode connection state */
 typedef enum {
@@ -498,7 +496,7 @@ bool WIFI_RW610_initialize_f(void) {
         	WIFI_RW610_DEBUG_TRACE("wlan_start() failed.\n");
         	result = false;
         } else {
-            syncBit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_INIT_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_MS);
+            syncBit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_INIT_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_TICKS);
             if (syncBit & EVENT_BIT(WLAN_REASON_INITIALIZED)){
             	wifi_rw610_state = WIFI_RW610_STARTED;
 				WIFI_RW610_DEBUG_TRACE("WLAN Driver Initialized\n");
@@ -558,7 +556,7 @@ bool WIFI_RW610_sta_start_f(void) {
 			result = false;
 			WIFI_RW610_DEBUG_TRACE("wlan_start() failed with code %d\n", ret);
 		} else {
-			syncBit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_INIT_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_MS);
+			syncBit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_INIT_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_TICKS);
 			if (syncBit & EVENT_BIT(WLAN_REASON_INITIALIZED))
 			{
 				wifi_rw610_state = WIFI_RW610_STARTED;
@@ -641,7 +639,7 @@ bool WIFI_RW610_join_f(int8_t* ssid, int32_t ssid_length, int8_t* passphrase, in
     EventBits_t syncBit;
     int32_t ssid_len = strlen((char const*)ssid); // ssid_length variable passed is the full buffer size here, not the string size
     int32_t passphrase_len = strlen((char const*)passphrase); // passphrase_length variable passed is the full buffer size here, not the string size
-    
+
     WIFI_RW610_ASSERT(wlan_is_started());
 
     strcpy(network.name, NET_NAME);
@@ -679,9 +677,7 @@ bool WIFI_RW610_join_f(int8_t* ssid, int32_t ssid_length, int8_t* passphrase, in
     }
 
     if (is_sta_connected()){
-    	err = wlan_disconnect();
-        if (err) {
-        	WIFI_RW610_DEBUG_TRACE("wlan_disconnect() failed with code %d\n", err);
+        if (!WIFI_RW610_leave_f()) {
             result = false;
         }
     }
@@ -709,7 +705,7 @@ bool WIFI_RW610_join_f(int8_t* ssid, int32_t ssid_length, int8_t* passphrase, in
 			WIFI_RW610_DEBUG_TRACE("Connecting in progress. Wait for further messages from callback.\n", err);
 		}
 
-		syncBit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_CONNECT_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_MS);
+		syncBit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_CONNECT_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_TICKS);
 		if (syncBit & EVENT_BIT(WLAN_REASON_SUCCESS))
 		{
 			WIFI_RW610_DEBUG_TRACE("Connected to AP\n");
@@ -747,26 +743,58 @@ bool WIFI_RW610_join_f(int8_t* ssid, int32_t ssid_length, int8_t* passphrase, in
 	}
 
     WIFI_RW610_DEBUG_TRACE("(%s) end\n", __func__);
-    return true;
+    return result;
 }
 
 bool WIFI_RW610_leave_f(void) {
     WIFI_RW610_DEBUG_TRACE("(%s) start\n", __func__);
-    bool result = true;
+    enum wlan_connection_state connection_state = WLAN_DISCONNECTED;
+    EventBits_t sync_bit;
+    int32_t err;
 
     WIFI_RW610_ASSERT(wlan_is_started());
 
-    if (is_sta_connected())
-    {
-    	int32_t err = wlan_disconnect();
-        if (err) {
-        	WIFI_RW610_DEBUG_TRACE("wlan_disconnect() failed with code %d\n", err);
-            result = false;
+    err = wlan_get_connection_state(&connection_state);
+    if (err != WM_SUCCESS) {
+        WIFI_RW610_DEBUG_TRACE("wlan_get_connection_state() failed with code %d\n", err);
+        return false;
+    }
+
+    xEventGroupClearBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_DISCONNECT_GROUP);
+    err = wlan_disconnect();
+
+    if (err != WM_SUCCESS) {
+        if (connection_state == WLAN_DISCONNECTED) {
+            WIFI_RW610_DEBUG_TRACE("Station already disconnected\n");
+            WIFI_RW610_DEBUG_TRACE("(%s) end\n", __func__);
+            return true;
+        }
+
+        WIFI_RW610_DEBUG_TRACE("wlan_disconnect() failed with code %d\n", err);
+        WIFI_RW610_DEBUG_TRACE("(%s) end\n", __func__);
+        return false;
+    }
+
+    if (connection_state == WLAN_DISCONNECTED) {
+        vTaskDelay(pdMS_TO_TICKS(100U));
+        WIFI_RW610_DEBUG_TRACE("Disconnect/cancel request completed from disconnected state\n");
+        WIFI_RW610_DEBUG_TRACE("(%s) end\n", __func__);
+        return true;
+    }
+
+    sync_bit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_DISCONNECT_GROUP, pdTRUE, pdFALSE, pdMS_TO_TICKS(5000U));
+
+    if ((sync_bit & WIFI_RW610_SYNC_DISCONNECT_GROUP) == 0U) {
+        err = wlan_get_connection_state(&connection_state);
+        if (err != WM_SUCCESS || connection_state != WLAN_DISCONNECTED) {
+            WIFI_RW610_DEBUG_TRACE("Error: disconnect timeout\n");
+            WIFI_RW610_DEBUG_TRACE("(%s) end\n", __func__);
+            return false;
         }
     }
 
     WIFI_RW610_DEBUG_TRACE("(%s) end\n", __func__);
-    return result;
+    return true;
 }
 
 bool WIFI_RW610_get_bssid_f(int8_t* bssid, int32_t bssid_length) {
@@ -923,7 +951,7 @@ bool WIFI_RW610_enable_softap_f(int8_t* ssid, int32_t ssid_length, int8_t* passp
 				result = false;
 			} else {
 				sync_bit =
-					xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_UAP_START_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_MS);
+					xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_UAP_START_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_TICKS);
 				if (sync_bit & EVENT_BIT(WLAN_REASON_UAP_SUCCESS))	{
 					WIFI_RW610_DEBUG_TRACE("uAP started\n");
 				} else if (sync_bit & EVENT_BIT(WLAN_REASON_UAP_START_FAILED))	{
@@ -995,14 +1023,18 @@ bool WIFI_RW610_disable_softap_f(void) {
     ret = wlan_stop_network(uap_network.name);
     if (WM_SUCCESS != ret){
 		WIFI_RW610_DEBUG_TRACE("wlan_stop_network() failed with code %d\n", ret);
+        result = false;
     } else {
-    	sync_bit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_UAP_STOP_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_MS);
+    	sync_bit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SYNC_UAP_STOP_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_TICKS);
 		if (sync_bit & EVENT_BIT(WLAN_REASON_UAP_STOPPED)){
 			WIFI_RW610_DEBUG_TRACE("uAP stopped\n");
 		} else if (sync_bit & EVENT_BIT(WLAN_REASON_UAP_STOP_FAILED)){
 			WIFI_RW610_DEBUG_TRACE("Error: uAP stop failed\n");
 			result = false;
-		}
+		} else {
+            WIFI_RW610_DEBUG_TRACE("Error: uAP stop timeout\n");
+            result = false;
+        }
     }
 
 	wlan_remove_network(uap_network.name);
@@ -1021,10 +1053,13 @@ bool WIFI_RW610_get_ap_count_f(int32_t* ap_count, int8_t active) {
 
     WIFI_RW610_ASSERT(NULL != ap_count);
 
+    xEventGroupClearBits(wifi_rw610_sync_event, WIFI_RW610_SCAN_GROUP);
     err = wlan_scan(wifi_scan_cb);
 
     if (err){
-    	WIFI_RW610_DEBUG_TRACE("Failed to launch scan. (err=%d)\n", err);
+        WIFI_RW610_DEBUG_TRACE("Failed to launch scan. (err=%d)\n", err);
+        WIFI_RW610_DEBUG_TRACE("(%s) end\n", __func__);
+        return false;
     } else {
     PRINTF(
             "[MEM] Before WiFi scan"
@@ -1043,7 +1078,7 @@ bool WIFI_RW610_get_ap_count_f(int32_t* ap_count, int8_t active) {
     );
     }
 
-    sync_bit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SCAN_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_MS);
+    sync_bit = xEventGroupWaitBits(wifi_rw610_sync_event, WIFI_RW610_SCAN_GROUP, pdTRUE, pdFALSE, WIFI_RW610_SYNC_TIMEOUT_TICKS);
     if (sync_bit & WIFI_RW610_SCAN_GROUP){
     	*ap_count = available_ap_count;
         result = true;
@@ -1186,4 +1221,3 @@ bool WIFI_RW610_get_access_point_state_f(void) {
 #ifdef __cplusplus
 	}
 #endif
-

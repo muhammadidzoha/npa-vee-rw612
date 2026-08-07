@@ -64,7 +64,7 @@ public class ActuatorDetailController implements ActuatorDetail.onBackListener, 
         }
 
         int actuatorId = selectedMenuItem.getActuatorId();
-        long currentTimestamp = System.currentTimeMillis();
+        long currentTimestamp = Util.currentTimeMillis();
 
         String detailTitle;
         ActuatorDisplayItem displayItem;

@@ -34,7 +34,7 @@ public class HeaderOverview extends Widget {
     private static final String APP = "SMART GREENHOUSE";
     private static final String ICON_TEXT = "WiFi";
 
-    private String time = "--:--:--";
+    private String time = "--:--";
 
     private static final int titleX = 22;
     private static final int titleY = 6;
@@ -58,7 +58,13 @@ public class HeaderOverview extends Widget {
     }
 
     public void setTime(String time) {
-        this.time = time;
+        String safeTime = time == null ? "--:--" : time;
+
+        if (safeTime.equals(this.time)) {
+            return;
+        }
+
+        this.time = safeTime;
         requestRender();
     }
 

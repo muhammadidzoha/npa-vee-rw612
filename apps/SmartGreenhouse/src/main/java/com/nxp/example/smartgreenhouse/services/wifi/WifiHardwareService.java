@@ -16,7 +16,7 @@ public final class WifiHardwareService {
 
     private static final String PROVISIONING_SSID = "smartgreenhouse";
     private static final String PROVISIONING_PASSWORD = "smartgreenhouse";
-    private static final int MAX_PROVISIONING_NETWORKS = 12;
+    private static final int MAX_PROVISIONING_NETWORKS = 16;
 
     private final WifiManager wifiManager;
 

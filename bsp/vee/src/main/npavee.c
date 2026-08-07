@@ -18,6 +18,7 @@
 
 #include "fsl_io_mux.h"
 #include "fsl_spi.h"
+#include "fsl_wwdt.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -51,12 +52,16 @@
 #include "lora.h"
 
 #define nxp_pa_task_PRIORITY (configMAX_PRIORITIES - 6)
+#define APP_WATCHDOG_TIMEOUT_SECONDS 60U
+#define APP_WATCHDOG_MAX_COUNT 0xFFFFFFU
 
 static void nxp_pa_task(void *pvParameters);
 
 static void BOARD_InitLcdicClock();
+static void APP_InitWatchdog(void);
 
 TaskHandle_t pvMicrojvmCreatedTask = NULL;
+static volatile bool appWatchdogEnabled = false;
 
 int main(void)
 {
@@ -154,10 +159,67 @@ int main(void)
         }
     }
 
+    APP_InitWatchdog();
+
     vTaskStartScheduler();
 
     for (;;)
         ;
+}
+
+static void APP_InitWatchdog(void)
+{
+    wwdt_config_t config;
+    uint32_t watchdogClockHz;
+    uint64_t timeoutCount;
+
+    CLOCK_AttachClk(kLPOSC_to_WDT0_CLK);
+    watchdogClockHz = CLOCK_GetWdtClkFreq();
+
+    if (watchdogClockHz == 0U)
+    {
+        PRINTF("[WATCHDOG] ERROR: WDT clock is unavailable.\r\n");
+        return;
+    }
+
+    timeoutCount = ((uint64_t)watchdogClockHz * APP_WATCHDOG_TIMEOUT_SECONDS) / 4U;
+
+    if (timeoutCount > APP_WATCHDOG_MAX_COUNT)
+    {
+        timeoutCount = APP_WATCHDOG_MAX_COUNT;
+    }
+
+    if (timeoutCount < 0xFFU)
+    {
+        timeoutCount = 0xFFU;
+    }
+
+    WWDT_GetDefaultConfig(&config);
+    config.enableWwdt = true;
+    config.enableWatchdogReset = true;
+    config.enableWatchdogProtect = false;
+    config.enableLockOscillator = false;
+    config.windowValue = APP_WATCHDOG_MAX_COUNT;
+    config.timeoutValue = (uint32_t)timeoutCount;
+    config.warningValue = 0U;
+    config.clockFreq_Hz = watchdogClockHz;
+
+    WWDT_Init(WWDT0, &config);
+    WWDT_Refresh(WWDT0);
+    appWatchdogEnabled = true;
+
+    PRINTF("[WATCHDOG] Enabled | clock=%u Hz | timeoutCount=%u | target=%u s\r\n",
+           (unsigned int)watchdogClockHz,
+           (unsigned int)timeoutCount,
+           (unsigned int)APP_WATCHDOG_TIMEOUT_SECONDS);
+}
+
+void Java_com_nxp_example_smartgreenhouse_services_watchdog_WatchdogNative_refreshNative(void)
+{
+    if (appWatchdogEnabled)
+    {
+        WWDT_Refresh(WWDT0);
+    }
 }
 
 static void BOARD_InitLcdicClock()

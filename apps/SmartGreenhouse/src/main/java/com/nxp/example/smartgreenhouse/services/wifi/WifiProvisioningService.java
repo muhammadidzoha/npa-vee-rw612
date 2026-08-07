@@ -6,6 +6,7 @@ import com.nxp.example.smartgreenhouse.views.wifi.WifiPortalView;
 
 import ej.ecom.wifi.AccessPoint;
 import ej.ecom.wifi.WifiCapability;
+import ej.bon.Util;
 
 import ej.hoka.http.HttpRequest;
 import ej.hoka.http.HttpResponse;
@@ -724,10 +725,10 @@ public final class WifiProvisioningService {
     }
 
     private boolean waitForProvisioningCredentials(long timeoutMilliseconds) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMilliseconds;
+        long deadline = Util.platformTimeMillis() + timeoutMilliseconds;
 
         while (!this.provisioningCredentialsSubmitted && !this.provisioningCancelRequested) {
-            long remaining = deadline - System.currentTimeMillis();
+            long remaining = deadline - Util.platformTimeMillis();
 
             if (remaining <= 0L) return false;
 

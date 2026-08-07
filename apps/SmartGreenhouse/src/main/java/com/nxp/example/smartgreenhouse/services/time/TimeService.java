@@ -55,13 +55,40 @@ public final class TimeService {
         this.clockTimer = new Timer();
         this.clockTimer.schedule(
                 new TimerTask() {
+                    private long lastNotifiedMinute = Long.MIN_VALUE;
+                    private boolean invalidTimeNotified;
+
                     @Override
                     public void run() {
                         long currentUtcMillis = getCurrentUtcMillis();
-                        String currentTime = Time.formatJakartaTime(currentUtcMillis);
+
+                        if (currentUtcMillis <= 0L) {
+                            if (this.invalidTimeNotified) {
+                                return;
+                            }
+
+                            this.invalidTimeNotified = true;
+                            this.lastNotifiedMinute = Long.MIN_VALUE;
+
+                            if (listener != null) {
+                                listener.onTimeChanged("--:--");
+                            }
+
+                            return;
+                        }
+
+                        this.invalidTimeNotified = false;
+
+                        long currentMinute = currentUtcMillis / 60000L;
+
+                        if (currentMinute == this.lastNotifiedMinute) {
+                            return;
+                        }
+
+                        this.lastNotifiedMinute = currentMinute;
 
                         if (listener != null) {
-                            listener.onTimeChanged(currentTime);
+                            listener.onTimeChanged(Time.formatJakartaTime(currentUtcMillis));
                         }
                     }
                 },

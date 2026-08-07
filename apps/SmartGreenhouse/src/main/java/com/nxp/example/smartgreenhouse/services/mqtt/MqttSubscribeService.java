@@ -30,7 +30,7 @@ public final class MqttSubscribeService {
     private static final boolean CONTROL_RETAINED = false;
     private static final int MIN_VALVE_ID = 1;
     private static final int MAX_VALVE_ID = 2;
-    private static final long CONNECTION_CHECK_INTERVAL_MS = 1000L;
+    private static final long CONNECTION_CHECK_INTERVAL_MS = 5000L;
     private static final long RECONNECT_INITIAL_DELAY_MS = 2000L;
     private static final long RECONNECT_MAX_DELAY_MS = 30000L;
     private static final boolean AUTHENTICATION_ENABLED = false;
@@ -98,28 +98,14 @@ public final class MqttSubscribeService {
     }
 
     public void pauseForWifiProvisioning() {
-        MqttClient client;
-
         synchronized (this) {
             this.provisioningPaused = true;
             this.subscribed = false;
-            client = this.mqttClient;
             notifyAll();
         }
 
         failAllPendingValveCommands();
-
-        if (client == null || !client.isConnected()) {
-            LOGGER.log(Level.INFO, "MQTT paused for WiFi provisioning | client is not connected.");
-            return;
-        }
-
-        try {
-            client.disconnect();
-            LOGGER.log(Level.INFO, "MQTT paused for WiFi provisioning.");
-        } catch (MqttException exception) {
-            LOGGER.log(Level.WARNING, "MQTT disconnect during WiFi provisioning failed | reasonCode=" + exception.getReasonCode() + " | message=" + exception.getMessage());
-        }
+        LOGGER.log(Level.INFO, "MQTT pause requested for WiFi provisioning.");
     }
 
     public void resumeAfterWifiProvisioning() {
@@ -145,7 +131,11 @@ public final class MqttSubscribeService {
 
         while (this.serviceRunning) {
             try {
-                waitWhileProvisioningPaused();
+                if (this.provisioningPaused) {
+                    disconnectClientForProvisioning();
+                    waitWhileProvisioningPaused();
+                    continue;
+                }
 
                 if (!this.serviceRunning) {
                     break;
@@ -234,6 +224,27 @@ public final class MqttSubscribeService {
         LOGGER.log(Level.INFO, "MQTT connection worker stopped.");
     }
 
+    private void disconnectClientForProvisioning() {
+        MqttClient client;
+
+        synchronized (this) {
+            this.subscribed = false;
+            client = this.mqttClient;
+        }
+
+        if (client == null || !client.isConnected()) {
+            LOGGER.log(Level.INFO, "MQTT paused for WiFi provisioning | client is not connected.");
+            return;
+        }
+
+        try {
+            client.disconnect();
+            LOGGER.log(Level.INFO, "MQTT disconnected for WiFi provisioning.");
+        } catch (MqttException exception) {
+            LOGGER.log(Level.WARNING, "MQTT disconnect during WiFi provisioning failed | reasonCode=" + exception.getReasonCode() + " | message=" + exception.getMessage());
+        }
+    }
+
     private void waitWhileProvisioningPaused() throws InterruptedException {
         synchronized (this) {
             while (this.serviceRunning && this.provisioningPaused) {
@@ -243,11 +254,11 @@ public final class MqttSubscribeService {
     }
 
     private void waitForReconnectDelay(long delayMilliseconds) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + delayMilliseconds;
+        long deadline = Util.platformTimeMillis() + delayMilliseconds;
 
         synchronized (this) {
             while (this.serviceRunning && !this.provisioningPaused) {
-                long remaining = deadline - System.currentTimeMillis();
+                long remaining = deadline - Util.platformTimeMillis();
 
                 if (remaining <= 0L) {
                     return;

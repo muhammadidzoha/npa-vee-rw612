@@ -70,14 +70,21 @@ uint8_t * disp_sup_get_fb_address() { return &s_lcdicBuffer[0]; }
 static lcdic_dma_handle_t s_lcdHandle;
 static dma_handle_t s_lcdDmaTxHandle;
 
-static SemaphoreHandle_t sync_flush;
+static volatile bool lcd_transfer_done;
+static volatile status_t lcd_transfer_status;
+static SemaphoreHandle_t shared_i2c2_mutex;
+static bool shared_i2c2_initialized;
+
+#define DISPLAY_FLUSH_TIMEOUT_MS 2000U
+#define SHARED_I2C2_MUTEX_TIMEOUT_MS 1000U
+#define SHARED_I2C2_BAUDRATE 100000U
+#define SHARED_I2C2_HARDWARE_TIMEOUT_MS 50U
 
 AT_NONCACHEABLE_SECTION_ALIGN(static dma_descriptor_t s_dmaDesc[2], 16);
 
 
 static void APP_InitLcdic(void)
 {
-    sync_flush = xSemaphoreCreateBinary();
     lcdic_config_t config;
 
     LCDIC_GetDefaultConfig(&config);
@@ -94,8 +101,8 @@ static void APP_InitLcdic(void)
     config.i8080CtrlFlags = APP_LCDIC_I8080_FLAG;
 #endif
 
-    config.cmdShortTimeout_Timer0 = 0U; /* disable */
-    config.cmdLongTimeout_Timer1  = 0U; /* disable */
+    config.cmdShortTimeout_Timer0 = 1U;
+    config.cmdLongTimeout_Timer1  = 16U;
 
     LCDIC_Init(APP_LCDIC, &config);
 
@@ -111,12 +118,11 @@ static void APP_InitLcdic(void)
 
 static void APP_LcdDoneCallback(LCDIC_Type *base, lcdic_dma_handle_t *handle, status_t status, void *userData)
 {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xSemaphoreGive(sync_flush);
-    // NOTE: it should be in ISR but xSemaphoreGiveFromISR blocks..
-    // xSemaphoreGiveFromISR(sync_flush, &xHigherPriorityTaskWoken);
-    // portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-    // PRINTF("%s\n", __func__);
+    (void)base;
+    (void)handle;
+    (void)userData;
+    lcd_transfer_status = status;
+    lcd_transfer_done = true;
 }
 
 void disp_sup_flush(uint8_t* srcAddr, uint32_t startX, uint32_t startY, uint32_t endX, uint32_t endY, uint32_t number_pixel)
@@ -147,13 +153,101 @@ void disp_sup_flush(uint8_t* srcAddr, uint32_t startX, uint32_t startY, uint32_t
             r += LCD_WIDTH * LCD_FB_BYTE_PER_PIXEL;
         }
     }
-    LCDIC_TransferDMA(APP_LCDIC, &s_lcdHandle, &xfer);
+    lcd_transfer_done = false;
+    lcd_transfer_status = kStatus_Success;
 
-    xSemaphoreTake(sync_flush, portMAX_DELAY);
+    status_t transfer_status = LCDIC_TransferDMA(APP_LCDIC, &s_lcdHandle, &xfer);
+    if (transfer_status != kStatus_Success)
+    {
+        PRINTF("[DISPLAY] LCD DMA start failed | status=%d\r\n", (int)transfer_status);
+        return;
+    }
+
+    TickType_t start_tick = xTaskGetTickCount();
+    TickType_t timeout_ticks = pdMS_TO_TICKS(DISPLAY_FLUSH_TIMEOUT_MS);
+
+    while (!lcd_transfer_done)
+    {
+        if ((xTaskGetTickCount() - start_tick) >= timeout_ticks)
+        {
+            PRINTF("[DISPLAY] LCD DMA timeout | aborting transfer\r\n");
+            DMA_AbortTransfer(&s_lcdDmaTxHandle);
+            LCDIC_TransferCreateHandleDMA(APP_LCDIC, &s_lcdHandle, APP_LcdDoneCallback, NULL, &s_lcdDmaTxHandle, NULL, s_dmaDesc);
+            return;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1U));
+    }
+
+    if (lcd_transfer_status != kStatus_Success)
+    {
+        PRINTF("[DISPLAY] LCD DMA callback error | status=%d\r\n", (int)lcd_transfer_status);
+    }
+}
+
+status_t BSP_I2C2_InitShared(void)
+{
+    if (shared_i2c2_mutex == NULL)
+    {
+        shared_i2c2_mutex = xSemaphoreCreateMutex();
+        if (shared_i2c2_mutex == NULL)
+        {
+            PRINTF("[I2C2] Unable to create shared mutex\r\n");
+            return kStatus_Fail;
+        }
+    }
+
+    if (xSemaphoreTake(shared_i2c2_mutex, pdMS_TO_TICKS(SHARED_I2C2_MUTEX_TIMEOUT_MS)) != pdTRUE)
+    {
+        PRINTF("[I2C2] Init mutex timeout\r\n");
+        return kStatus_Fail;
+    }
+
+    if (!shared_i2c2_initialized)
+    {
+        i2c_master_config_t i2cConfig = {0};
+        I2C_MasterGetDefaultConfig(&i2cConfig);
+        i2cConfig.baudRate_Bps = SHARED_I2C2_BAUDRATE;
+        i2cConfig.enableTimeout = true;
+        i2cConfig.timeout_Ms = SHARED_I2C2_HARDWARE_TIMEOUT_MS;
+        I2C_MasterInit(I2C2, &i2cConfig, CLOCK_GetFlexCommClkFreq(2));
+        shared_i2c2_initialized = true;
+        PRINTF("[I2C2] Shared controller initialized | baudrate=%u Hz\r\n", SHARED_I2C2_BAUDRATE);
+    }
+
+    xSemaphoreGive(shared_i2c2_mutex);
+    return kStatus_Success;
+}
+
+status_t BSP_I2C2_MasterTransfer(i2c_master_transfer_t *transfer)
+{
+    status_t status;
+
+    if (transfer == NULL)
+    {
+        return kStatus_InvalidArgument;
+    }
+
+    status = BSP_I2C2_InitShared();
+    if (status != kStatus_Success)
+    {
+        return status;
+    }
+
+    if (xSemaphoreTake(shared_i2c2_mutex, pdMS_TO_TICKS(SHARED_I2C2_MUTEX_TIMEOUT_MS)) != pdTRUE)
+    {
+        PRINTF("[I2C2] Transfer mutex timeout\r\n");
+        return kStatus_Fail;
+    }
+
+    status = I2C_MasterTransferBlocking(I2C2, transfer);
+    xSemaphoreGive(shared_i2c2_mutex);
+    return status;
 }
 
 void disp_sup_pre_init(void)
 {
+    BSP_I2C2_InitShared();
 }
 
 void disp_sup_indev_init(void)
@@ -268,11 +362,7 @@ status_t BOARD_GetTouchPanelPoint(int *x, int *y)
 static status_t DEMO_TouchI2C_Init(void)
 {
     PRINTF("%s\n", __func__);
-    i2c_master_config_t i2cConfig = {0};
-
-    I2C_MasterGetDefaultConfig(&i2cConfig);
-    I2C_MasterInit(DEMO_TOUCH_I2C, &i2cConfig, DEMO_TOUCH_I2C_CLOCK_FREQ);
-    return kStatus_Success;
+    return BSP_I2C2_InitShared();
 }
 
 static status_t DEMO_TouchI2C_Send(uint8_t deviceAddress, uint32_t subAddress, uint8_t subAddressSize, const uint8_t *txBuff, uint8_t txBuffSize)
@@ -288,7 +378,7 @@ static status_t DEMO_TouchI2C_Send(uint8_t deviceAddress, uint32_t subAddress, u
     masterXfer.dataSize       = txBuffSize;
     masterXfer.flags          = kI2C_TransferDefaultFlag;
 
-    return I2C_MasterTransferBlocking(DEMO_TOUCH_I2C, &masterXfer);
+    return BSP_I2C2_MasterTransfer(&masterXfer);
 }
 
 static status_t DEMO_TouchI2C_Receive(uint8_t deviceAddress, uint32_t subAddress, uint8_t subAddressSize, uint8_t *rxBuff, uint8_t rxBuffSize)
@@ -304,7 +394,7 @@ static status_t DEMO_TouchI2C_Receive(uint8_t deviceAddress, uint32_t subAddress
     masterXfer.direction      = kI2C_Read;
     masterXfer.flags          = kI2C_TransferDefaultFlag;
 
-    return I2C_MasterTransferBlocking(DEMO_TOUCH_I2C, &masterXfer);
+    return BSP_I2C2_MasterTransfer(&masterXfer);
 }
 
 

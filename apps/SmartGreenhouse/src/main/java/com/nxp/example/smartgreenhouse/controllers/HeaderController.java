@@ -7,6 +7,8 @@ import com.nxp.example.smartgreenhouse.views.MainPage;
 import com.nxp.example.smartgreenhouse.views.overview.HeaderOverview;
 import com.nxp.example.smartgreenhouse.views.wifi.WifiProvisioningModal;
 
+import ej.bon.Timer;
+import ej.bon.TimerTask;
 import ej.microui.MicroUI;
 
 import java.util.logging.Level;
@@ -21,6 +23,7 @@ public class HeaderController {
     private final WifiProvisioningService wifiProvisioningService;
 
     private Runnable periodicTask;
+    private Timer periodicTimer;
     private Runnable wifiConnectedTask;
     private Runnable wifiProvisioningStartedTask;
 
@@ -123,6 +126,7 @@ public class HeaderController {
         );
 
         this.periodicTask = null;
+        this.periodicTimer = null;
         this.wifiConnectedTask = null;
         this.wifiProvisioningStartedTask = null;
         this.wifiProvisioningUiActive = false;
@@ -133,6 +137,7 @@ public class HeaderController {
         registerWifiClickListener();
         registerWifiProvisioningBackListener();
         startClock();
+        startPeriodicTask();
         this.wifiProvisioningService.tryAutoConnect();
     }
 
@@ -273,18 +278,6 @@ public class HeaderController {
                                     @Override
                                     public void run() {
                                         HeaderController.this.mainPage.updateTime(currentTime);
-
-                                        Runnable task = HeaderController.this.periodicTask;
-
-                                        if (task == null) {
-                                            return;
-                                        }
-
-                                        try {
-                                            task.run();
-                                        } catch (RuntimeException exception) {
-                                            LOGGER.log(Level.WARNING, "Periodic application task failed: " + exception);
-                                        }
                                     }
                                 }
                         );
@@ -292,4 +285,33 @@ public class HeaderController {
                 }
         );
     }
+
+    private void startPeriodicTask() {
+        if (this.periodicTimer != null) {
+            return;
+        }
+
+        this.periodicTimer = new Timer();
+        this.periodicTimer.schedule(
+                new TimerTask() {
+                    @Override
+                    public void run() {
+                        Runnable task = HeaderController.this.periodicTask;
+
+                        if (task == null) {
+                            return;
+                        }
+
+                        try {
+                            task.run();
+                        } catch (RuntimeException exception) {
+                            LOGGER.log(Level.WARNING, "Periodic application task failed: " + exception);
+                        }
+                    }
+                },
+                0,
+                5000
+        );
+    }
+
 }
