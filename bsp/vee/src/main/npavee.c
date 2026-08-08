@@ -53,9 +53,13 @@
 
 #define nxp_pa_task_PRIORITY (configMAX_PRIORITIES - 6)
 #define APP_WATCHDOG_TIMEOUT_SECONDS 60U
+#define APP_WATCHDOG_REFRESH_PERIOD_MS 5000U
 #define APP_WATCHDOG_MAX_COUNT 0xFFFFFFU
+#define APP_WATCHDOG_TASK_STACK_SIZE 512U
+#define APP_WATCHDOG_TASK_PRIORITY (configMAX_PRIORITIES - 2)
 
 static void nxp_pa_task(void *pvParameters);
+static void APP_WatchdogTask(void *pvParameters);
 
 static void BOARD_InitLcdicClock();
 static void APP_InitWatchdog(void);
@@ -75,7 +79,6 @@ int main(void)
     BOARD_InitDebugConsole();
 
 #ifdef ENABLE_WIFI
-
     RESET_PeripheralReset(kGDMA_RST_SHIFT_RSTn);
 
     POWER_ConfigCauInSleep(false);
@@ -96,9 +99,7 @@ int main(void)
 
     INPUTMUX_Init(INPUTMUX);
 
-    RESET_PeripheralReset(
-        kINPUTMUX_RST_SHIFT_RSTn
-    );
+    RESET_PeripheralReset(kINPUTMUX_RST_SHIFT_RSTn);
 
     INPUTMUX_AttachSignal(
         INPUTMUX,
@@ -113,7 +114,6 @@ int main(void)
     );
 
 #if ENABLE_SYSTEM_VIEW == 1
-
     SEGGER_SYSVIEW_Conf();
 
     PRINTF(
@@ -124,7 +124,6 @@ int main(void)
     SEGGER_SYSVIEW_setMicroJVMTask(
         (U32)pvMicrojvmCreatedTask
     );
-
 #endif
 
     if (xTaskCreate(
@@ -205,13 +204,46 @@ static void APP_InitWatchdog(void)
     config.clockFreq_Hz = watchdogClockHz;
 
     WWDT_Init(WWDT0, &config);
+
+    if (xTaskCreate(
+            APP_WatchdogTask,
+            "APP_Watchdog",
+            APP_WATCHDOG_TASK_STACK_SIZE,
+            NULL,
+            APP_WATCHDOG_TASK_PRIORITY,
+            NULL) != pdPASS)
+    {
+        PRINTF("[WATCHDOG] ERROR: Watchdog task creation failed.\r\n");
+        return;
+    }
+
     WWDT_Refresh(WWDT0);
     appWatchdogEnabled = true;
 
-    PRINTF("[WATCHDOG] Enabled | clock=%u Hz | timeoutCount=%u | target=%u s\r\n",
-           (unsigned int)watchdogClockHz,
-           (unsigned int)timeoutCount,
-           (unsigned int)APP_WATCHDOG_TIMEOUT_SECONDS);
+    PRINTF(
+        "[WATCHDOG] Enabled | clock=%u Hz | timeoutCount=%u | target=%u s | refresh=%u ms\r\n",
+        (unsigned int)watchdogClockHz,
+        (unsigned int)timeoutCount,
+        (unsigned int)APP_WATCHDOG_TIMEOUT_SECONDS,
+        (unsigned int)APP_WATCHDOG_REFRESH_PERIOD_MS
+    );
+}
+
+static void APP_WatchdogTask(void *pvParameters)
+{
+    (void)pvParameters;
+
+    for (;;)
+    {
+        if (appWatchdogEnabled)
+        {
+            WWDT_Refresh(WWDT0);
+        }
+
+        vTaskDelay(
+            pdMS_TO_TICKS(APP_WATCHDOG_REFRESH_PERIOD_MS)
+        );
+    }
 }
 
 void Java_com_nxp_example_smartgreenhouse_services_watchdog_WatchdogNative_refreshNative(void)
@@ -311,7 +343,7 @@ void microjvm_main(void)
 }
 
 extern char _HeapAsFreeRAMSize
-    __asm("_HeapAsFreeRAMSize");
+__asm("_HeapAsFreeRAMSize");
 
 static void nxp_pa_task(
     void *pvParameters)
@@ -319,17 +351,13 @@ static void nxp_pa_task(
     (void)pvParameters;
 
 #ifdef CPULOAD_ENABLED
-
     cpuload_init();
-
 #endif
 
 #ifdef SD_ENABLED
-
     START_SDCARD_Task(
         NULL
     );
-
 #endif
 
     for (;;)
@@ -350,14 +378,12 @@ static void nxp_pa_task(
         );
 
 #if (ENABLE_SHELL == 1)
-
         if (shell_init() != 0)
         {
             PRINTF(
                 "Could not run shell...\r\n"
             );
         }
-
 #endif
 
         microjvm_main();
@@ -383,8 +409,6 @@ void vApplicationMallocFailedHook()
 void vApplicationIdleHook(void)
 {
 #ifdef CPULOAD_ENABLED
-
     cpuload_idle();
-
 #endif
 }
