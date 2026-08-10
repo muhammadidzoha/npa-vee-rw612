@@ -54,6 +54,19 @@
 #define nxp_pa_task_PRIORITY (configMAX_PRIORITIES - 6)
 #define APP_WATCHDOG_TIMEOUT_SECONDS 60U
 #define APP_WATCHDOG_REFRESH_PERIOD_MS 5000U
+
+/*
+ * Maksimum jeda antar heartbeat dari aplikasi Java sebelum watchdog
+ * berhenti disuapi. Harus lebih kecil dari APP_WATCHDOG_TIMEOUT_SECONDS
+ * agar reset terjadi dalam waktu yang wajar.
+ */
+#define APP_WATCHDOG_HEARTBEAT_TIMEOUT_MS 30000U
+
+/*
+ * Masa tenggang setelah boot. VM, WiFi, dan UI butuh waktu untuk siap
+ * sebelum heartbeat pertama datang. Tanpa ini board akan reset-loop.
+ */
+#define APP_WATCHDOG_STARTUP_GRACE_MS 120000U
 #define APP_WATCHDOG_MAX_COUNT 0xFFFFFFU
 #define APP_WATCHDOG_TASK_STACK_SIZE 512U
 #define APP_WATCHDOG_TASK_PRIORITY (configMAX_PRIORITIES - 2)
@@ -66,6 +79,7 @@ static void APP_InitWatchdog(void);
 
 TaskHandle_t pvMicrojvmCreatedTask = NULL;
 static volatile bool appWatchdogEnabled = false;
+static volatile uint32_t appHeartbeatCounter = 0U;
 
 int main(void)
 {
@@ -231,13 +245,63 @@ static void APP_InitWatchdog(void)
 
 static void APP_WatchdogTask(void *pvParameters)
 {
+    uint32_t lastHeartbeatSeen;
+    TickType_t lastHeartbeatTick;
+    TickType_t startTick;
+    bool starvationReported;
+
     (void)pvParameters;
+
+    lastHeartbeatSeen = appHeartbeatCounter;
+    startTick = xTaskGetTickCount();
+    lastHeartbeatTick = startTick;
+    starvationReported = false;
 
     for (;;)
     {
+        uint32_t currentHeartbeat;
+        TickType_t now;
+        bool withinGracePeriod;
+        bool applicationAlive;
+
+        currentHeartbeat = appHeartbeatCounter;
+        now = xTaskGetTickCount();
+
+        if (currentHeartbeat != lastHeartbeatSeen)
+        {
+            lastHeartbeatSeen = currentHeartbeat;
+            lastHeartbeatTick = now;
+            starvationReported = false;
+        }
+
+        withinGracePeriod =
+            ((now - startTick) <
+             pdMS_TO_TICKS(APP_WATCHDOG_STARTUP_GRACE_MS));
+
+        applicationAlive =
+            ((now - lastHeartbeatTick) <
+             pdMS_TO_TICKS(APP_WATCHDOG_HEARTBEAT_TIMEOUT_MS));
+
         if (appWatchdogEnabled)
         {
-            WWDT_Refresh(WWDT0);
+            if (withinGracePeriod || applicationAlive)
+            {
+                WWDT_Refresh(WWDT0);
+            }
+            else if (!starvationReported)
+            {
+                /*
+                 * Aplikasi Java berhenti berdetak. Berhenti menyuapi WWDT
+                 * dan biarkan hardware me-reset board.
+                 */
+                PRINTF(
+                    "[WATCHDOG] No heartbeat from application"
+                    " for %u ms. Allowing hardware reset.\r\n",
+                    (unsigned int)APP_WATCHDOG_HEARTBEAT_TIMEOUT_MS
+                );
+
+                starvationReported = true;
+            }
         }
 
         vTaskDelay(
@@ -246,12 +310,13 @@ static void APP_WatchdogTask(void *pvParameters)
     }
 }
 
+/*
+ * Dipanggil dari Java. Hanya menaikkan counter; keputusan menyuapi WWDT
+ * tetap di APP_WatchdogTask agar terpusat di satu tempat.
+ */
 void Java_com_nxp_example_smartgreenhouse_services_watchdog_WatchdogNative_refreshNative(void)
 {
-    if (appWatchdogEnabled)
-    {
-        WWDT_Refresh(WWDT0);
-    }
+    appHeartbeatCounter++;
 }
 
 static void BOARD_InitLcdicClock()

@@ -6,6 +6,7 @@ import com.nxp.example.smartgreenhouse.models.sensor.SensorDataStore;
 import com.nxp.example.smartgreenhouse.models.sensor.SensorHistoryStore;
 import com.nxp.example.smartgreenhouse.services.lora.LoRaHardwareService;
 import com.nxp.example.smartgreenhouse.services.mqtt.MqttSubscribeService;
+import com.nxp.example.smartgreenhouse.services.watchdog.WatchdogNative;
 import com.nxp.example.smartgreenhouse.state.AppState;
 import com.nxp.example.smartgreenhouse.views.MainPage;
 
@@ -55,6 +56,7 @@ public class AppController {
                 new Runnable() {
                     @Override
                     public void run() {
+                        WatchdogNative.refresh();
                         AppController.this.loRaHardwareService.poll();
                     }
                 }
